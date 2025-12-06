@@ -1,0 +1,139 @@
+import { useState, useEffect } from 'react';
+import { Bell, Globe, LogOut, User } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
+import { Notification } from '../types/database';
+
+export default function TopNav() {
+  const { profile, signOut } = useAuth();
+  const navigate = useNavigate();
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  useEffect(() => {
+    if (profile) {
+      loadNotifications();
+    }
+  }, [profile]);
+
+  const loadNotifications = async () => {
+    if (!profile) return;
+
+    const { data } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', profile.id)
+      .eq('is_read', false)
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    if (data) setNotifications(data);
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/login');
+  };
+
+  const unreadCount = notifications.length;
+
+  return (
+    <nav className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-50 shadow-sm">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-4">
+          <h1 className="text-2xl font-bold text-blue-600">UDIS</h1>
+          <span className="text-sm text-gray-500">Document Intelligence Platform</span>
+        </div>
+
+        <div className="flex items-center space-x-4">
+          <button
+            onClick={() => setShowNotifications(!showNotifications)}
+            className="relative p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <Bell className="w-5 h-5" />
+            {unreadCount > 0 && (
+              <span className="absolute top-1 right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                {unreadCount}
+              </span>
+            )}
+          </button>
+
+          <button className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+            <Globe className="w-5 h-5" />
+          </button>
+
+          <div className="relative">
+            <button
+              onClick={() => setShowProfileMenu(!showProfileMenu)}
+              className="flex items-center space-x-3 p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              {profile?.avatar_url ? (
+                <img
+                  src={profile.avatar_url}
+                  alt={profile.full_name}
+                  className="w-8 h-8 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center">
+                  <span className="text-white text-sm font-medium">
+                    {profile?.full_name?.charAt(0).toUpperCase() || 'U'}
+                  </span>
+                </div>
+              )}
+              <span className="text-sm font-medium text-gray-700">{profile?.full_name || 'User'}</span>
+            </button>
+
+            {showProfileMenu && (
+              <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-2">
+                <button
+                  onClick={() => {
+                    navigate('/profile');
+                    setShowProfileMenu(false);
+                  }}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-2"
+                >
+                  <User className="w-4 h-4" />
+                  <span>View Profile</span>
+                </button>
+                <button
+                  onClick={handleSignOut}
+                  className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {showNotifications && (
+        <div className="absolute right-6 top-16 w-80 bg-white rounded-lg shadow-xl border border-gray-200">
+          <div className="p-4 border-b border-gray-200">
+            <h3 className="font-semibold text-gray-900">Notifications</h3>
+          </div>
+          <div className="max-h-96 overflow-y-auto">
+            {notifications.length === 0 ? (
+              <div className="p-4 text-center text-gray-500">
+                No new notifications
+              </div>
+            ) : (
+              notifications.map((notification) => (
+                <div key={notification.id} className="p-4 border-b border-gray-100 hover:bg-gray-50">
+                  <h4 className="font-medium text-sm text-gray-900">{notification.title}</h4>
+                  <p className="text-xs text-gray-600 mt-1">{notification.message}</p>
+                  <span className="text-xs text-gray-400 mt-2 block">
+                    {new Date(notification.created_at).toLocaleString()}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </nav>
+  );
+}

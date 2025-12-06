@@ -1,15 +1,23 @@
-import { useState, useEffect } from 'react';
-import { Bell, Globe, LogOut, User } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
-import { Notification } from '../types/database';
+import { useState, useEffect } from "react";
+import { Bell, Globe, LogOut, User } from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
+import { useNavigate } from "react-router-dom";
+
+interface NotificationType {
+  id: string;
+  title: string;
+  message: string;
+  createdAt: string;
+  is_read: boolean;
+}
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 export default function TopNav() {
   const { profile, signOut } = useAuth();
   const navigate = useNavigate();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<NotificationType[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
   useEffect(() => {
@@ -18,26 +26,39 @@ export default function TopNav() {
     }
   }, [profile]);
 
+  // Helper fetch with JWT
+  const authFetch = async (url: string, options: RequestInit = {}) => {
+    const token = localStorage.getItem("token");
+
+    const headers: any = {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    return fetch(url, { ...options, headers });
+  };
+
   const loadNotifications = async () => {
     if (!profile) return;
 
-    const { data } = await supabase
-      .from('notifications')
-      .select('*')
-      .eq('user_id', profile.id)
-      .eq('is_read', false)
-      .order('created_at', { ascending: false })
-      .limit(5);
+    try {
+      const res = await authFetch(`${API_URL}/notifications/my`);
+      const data = await res.json();
 
-    if (data) setNotifications(data);
+      if (res.ok) {
+        setNotifications(data);
+      }
+    } catch (e) {
+      console.error("Error loading notifications:", e);
+    }
   };
 
   const handleSignOut = async () => {
     await signOut();
-    navigate('/login');
+    navigate("/login");
   };
 
-  const unreadCount = notifications.length;
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
 
   return (
     <nav className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-50 shadow-sm">
@@ -48,6 +69,7 @@ export default function TopNav() {
         </div>
 
         <div className="flex items-center space-x-4">
+          {/* Notifications */}
           <button
             onClick={() => setShowNotifications(!showNotifications)}
             className="relative p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
@@ -64,6 +86,7 @@ export default function TopNav() {
             <Globe className="w-5 h-5" />
           </button>
 
+          {/* Profile Dropdown */}
           <div className="relative">
             <button
               onClick={() => setShowProfileMenu(!showProfileMenu)}
@@ -78,18 +101,21 @@ export default function TopNav() {
               ) : (
                 <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center">
                   <span className="text-white text-sm font-medium">
-                    {profile?.full_name?.charAt(0).toUpperCase() || 'U'}
+                    {profile?.full_name?.charAt(0).toUpperCase() || "U"}
                   </span>
                 </div>
               )}
-              <span className="text-sm font-medium text-gray-700">{profile?.full_name || 'User'}</span>
+              <span className="text-sm font-medium text-gray-700">
+                {profile?.full_name || "User"}
+              </span>
             </button>
 
+            {/* Profile Menu */}
             {showProfileMenu && (
               <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-2">
                 <button
                   onClick={() => {
-                    navigate('/profile');
+                    navigate("/profile");
                     setShowProfileMenu(false);
                   }}
                   className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-2"
@@ -110,6 +136,7 @@ export default function TopNav() {
         </div>
       </div>
 
+      {/* Notification Dropdown */}
       {showNotifications && (
         <div className="absolute right-6 top-16 w-80 bg-white rounded-lg shadow-xl border border-gray-200">
           <div className="p-4 border-b border-gray-200">
@@ -117,16 +144,19 @@ export default function TopNav() {
           </div>
           <div className="max-h-96 overflow-y-auto">
             {notifications.length === 0 ? (
-              <div className="p-4 text-center text-gray-500">
-                No new notifications
-              </div>
+              <div className="p-4 text-center text-gray-500">No new notifications</div>
             ) : (
               notifications.map((notification) => (
-                <div key={notification.id} className="p-4 border-b border-gray-100 hover:bg-gray-50">
-                  <h4 className="font-medium text-sm text-gray-900">{notification.title}</h4>
+                <div
+                  key={notification.id}
+                  className="p-4 border-b border-gray-100 hover:bg-gray-50"
+                >
+                  <h4 className="font-medium text-sm text-gray-900">
+                    {notification.title}
+                  </h4>
                   <p className="text-xs text-gray-600 mt-1">{notification.message}</p>
                   <span className="text-xs text-gray-400 mt-2 block">
-                    {new Date(notification.created_at).toLocaleString()}
+                    {new Date(notification.createdAt).toLocaleString()}
                   </span>
                 </div>
               ))

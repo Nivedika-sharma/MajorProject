@@ -10,19 +10,64 @@ import {
   History,
   ArrowLeft,
   Users,
-  X,
-  Send,
-  Trash2
+  Trash2,
+  Send
 } from 'lucide-react';
 import DashboardLayout from '../components/DashboardLayout';
-import { supabase } from '../lib/supabase';
-import { DocumentWithDetails, Comment, Note, Highlight, DocumentPermission, Profile } from '../types/database';
 import { useAuth } from '../contexts/AuthContext';
+
+interface DocumentWithDetails {
+  id: string;
+  title: string;
+  content: string;
+  summary?: string;
+  urgency: 'low' | 'medium' | 'high';
+  uploaded_by: string;
+  created_at: string;
+  department?: { name: string };
+  profile?: { full_name: string };
+}
+
+interface Comment {
+  id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+}
+
+interface Note {
+  id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+  position?: any;
+}
+
+interface Highlight {
+  id: string;
+  user_id: string;
+  text: string;
+  color: string;
+  created_at: string;
+}
+
+interface DocumentPermission {
+  id: string;
+  user_id: string;
+  permission_level: 'view' | 'edit' | 'admin';
+}
+
+interface Profile {
+  id: string;
+  full_name: string;
+  email: string;
+}
 
 export default function DocumentDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { profile } = useAuth();
+
   const [document, setDocument] = useState<DocumentWithDetails | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -37,120 +82,98 @@ export default function DocumentDetail() {
   const [selectedUser, setSelectedUser] = useState('');
   const [permissionLevel, setPermissionLevel] = useState<'view' | 'edit' | 'admin'>('view');
 
+  // Redirect to login if not logged in
   useEffect(() => {
-    if (id) {
+    if (!profile) {
+      navigate('/login');
+    }
+  }, [profile]);
+
+  // Load mock or API data
+  useEffect(() => {
+    if (id && profile) {
       loadDocumentData();
     }
-  }, [id]);
+  }, [id, profile]);
 
   const loadDocumentData = async () => {
-    if (!id) return;
-
     setLoading(true);
 
-    const [docResult, commentsResult, notesResult, highlightsResult, permissionsResult, profilesResult] = await Promise.all([
-      supabase
-        .from('documents')
-        .select(`
-          *,
-          department:departments(*),
-          profile:profiles(*)
-        `)
-        .eq('id', id)
-        .maybeSingle(),
-      supabase
-        .from('comments')
-        .select('*')
-        .eq('document_id', id)
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('notes')
-        .select('*')
-        .eq('document_id', id)
-        .eq('user_id', profile?.id || '')
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('highlights')
-        .select('*')
-        .eq('document_id', id)
-        .eq('user_id', profile?.id || ''),
-      supabase
-        .from('document_permissions')
-        .select('*')
-        .eq('document_id', id),
-      supabase.from('profiles').select('*')
-    ]);
+    try {
+      // Replace these with your API calls
+      const fetchedDocument: DocumentWithDetails = {
+        id: id!,
+        title: 'Sample Document',
+        content: 'This is a sample document content.',
+        summary: 'This is a short summary.',
+        urgency: 'medium',
+        uploaded_by: profile!.id,
+        created_at: new Date().toISOString(),
+        department: { name: 'Engineering' },
+        profile: { full_name: profile!.full_name }
+      };
 
-    if (docResult.data) setDocument(docResult.data);
-    if (commentsResult.data) setComments(commentsResult.data);
-    if (notesResult.data) setNotes(notesResult.data);
-    if (highlightsResult.data) setHighlights(highlightsResult.data);
-    if (permissionsResult.data) setPermissions(permissionsResult.data);
-    if (profilesResult.data) setAllProfiles(profilesResult.data);
+      const fetchedComments: Comment[] = [];
+      const fetchedNotes: Note[] = [];
+      const fetchedHighlights: Highlight[] = [];
+      const fetchedPermissions: DocumentPermission[] = [];
+      const fetchedProfiles: Profile[] = [profile!];
+
+      setDocument(fetchedDocument);
+      setComments(fetchedComments);
+      setNotes(fetchedNotes);
+      setHighlights(fetchedHighlights);
+      setPermissions(fetchedPermissions);
+      setAllProfiles(fetchedProfiles);
+    } catch (error) {
+      console.error('Error loading document data:', error);
+    }
 
     setLoading(false);
   };
 
-  const handleAddComment = async () => {
-    if (!newComment.trim() || !profile || !id) return;
-
-    const { error } = await supabase.from('comments').insert({
-      document_id: id,
+  const handleAddComment = () => {
+    if (!newComment.trim() || !profile) return;
+    const newC: Comment = {
+      id: Date.now().toString(),
       user_id: profile.id,
-      content: newComment
-    });
-
-    if (!error) {
-      setNewComment('');
-      loadDocumentData();
-    }
+      content: newComment,
+      created_at: new Date().toISOString()
+    };
+    setComments([newC, ...comments]);
+    setNewComment('');
   };
 
-  const handleAddNote = async () => {
-    if (!newNote.trim() || !profile || !id) return;
-
-    const { error } = await supabase.from('notes').insert({
-      document_id: id,
+  const handleAddNote = () => {
+    if (!newNote.trim() || !profile) return;
+    const newN: Note = {
+      id: Date.now().toString(),
       user_id: profile.id,
       content: newNote,
+      created_at: new Date().toISOString(),
       position: {}
-    });
-
-    if (!error) {
-      setNewNote('');
-      loadDocumentData();
-    }
+    };
+    setNotes([newN, ...notes]);
+    setNewNote('');
   };
 
-  const handleAddPermission = async () => {
-    if (!selectedUser || !id || !profile) return;
-
-    const { error } = await supabase.from('document_permissions').insert({
-      document_id: id,
+  const handleAddPermission = () => {
+    if (!selectedUser) return;
+    const newP: DocumentPermission = {
+      id: Date.now().toString(),
       user_id: selectedUser,
-      permission_level: permissionLevel,
-      granted_by: profile.id
-    });
-
-    if (!error) {
-      setShowAddPermission(false);
-      setSelectedUser('');
-      loadDocumentData();
-    }
+      permission_level: permissionLevel
+    };
+    setPermissions([...permissions, newP]);
+    setShowAddPermission(false);
+    setSelectedUser('');
   };
 
-  const handleDeletePermission = async (permissionId: string) => {
-    const { error } = await supabase
-      .from('document_permissions')
-      .delete()
-      .eq('id', permissionId);
-
-    if (!error) {
-      loadDocumentData();
-    }
+  const handleDeletePermission = (id: string) => {
+    setPermissions(permissions.filter(p => p.id !== id));
   };
 
-  if (loading) {
+  if (loading || !profile) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center h-screen">
@@ -163,16 +186,14 @@ export default function DocumentDetail() {
   if (!document) {
     return (
       <DashboardLayout>
-        <div className="p-8">
-          <div className="text-center py-12">
-            <p className="text-gray-600">Document not found</p>
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="mt-4 text-blue-600 hover:text-blue-700"
-            >
-              Back to Dashboard
-            </button>
-          </div>
+        <div className="p-8 text-center">
+          <p className="text-gray-600">Document not found</p>
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="mt-4 text-blue-600 hover:text-blue-700"
+          >
+            Back to Dashboard
+          </button>
         </div>
       </DashboardLayout>
     );
@@ -181,67 +202,24 @@ export default function DocumentDetail() {
   return (
     <DashboardLayout>
       <div className="h-[calc(100vh-73px)] flex flex-col">
-        <div className="bg-white border-b border-gray-200 px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">{document.title}</h1>
-                <p className="text-sm text-gray-600">
-                  {document.department?.name} • {new Date(document.created_at).toLocaleDateString()}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <button className="flex items-center space-x-2 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
-                <Edit className="w-4 h-4" />
-                <span>Edit</span>
-              </button>
-              <button className="flex items-center space-x-2 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
-                <Highlighter className="w-4 h-4" />
-                <span>Highlight</span>
-              </button>
-              <button className="flex items-center space-x-2 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
-                <Download className="w-4 h-4" />
-                <span>Download</span>
-              </button>
-              <button className="flex items-center space-x-2 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
-                <Share2 className="w-4 h-4" />
-                <span>Share</span>
-              </button>
-              <button className="flex items-center space-x-2 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
-                <History className="w-4 h-4" />
-                <span>Version History</span>
-              </button>
+        {/* Header */}
+        <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">{document.title}</h1>
+              <p className="text-sm text-gray-600">{document.department?.name} • {new Date(document.created_at).toLocaleDateString()}</p>
             </div>
           </div>
         </div>
 
+        {/* Main Content */}
         <div className="flex-1 flex overflow-hidden">
-          <div className="w-64 bg-white border-r border-gray-200 overflow-y-auto p-4">
-            <h3 className="font-semibold text-gray-900 mb-4">Traceability</h3>
-            <div className="space-y-2">
-              <div className="p-3 bg-blue-50 rounded-lg">
-                <p className="text-sm font-medium text-blue-900">Original Source</p>
-                <p className="text-xs text-blue-700 mt-1">Section 1.1</p>
-              </div>
-              <div className="p-3 bg-gray-50 rounded-lg">
-                <p className="text-sm font-medium text-gray-900">Related Documents</p>
-                <p className="text-xs text-gray-600 mt-1">3 linked items</p>
-              </div>
-              <div className="p-3 bg-gray-50 rounded-lg">
-                <p className="text-sm font-medium text-gray-900">References</p>
-                <p className="text-xs text-gray-600 mt-1">5 citations</p>
-              </div>
-            </div>
-          </div>
-
           <div className="flex-1 bg-gray-50 overflow-y-auto p-8">
             <div className="max-w-4xl mx-auto bg-white shadow-lg rounded-lg p-12">
               <div className="mb-6 pb-6 border-b border-gray-200">
@@ -263,23 +241,17 @@ export default function DocumentDetail() {
                   </div>
                 )}
               </div>
-
-              <div className="prose max-w-none">
-                {document.content ? (
-                  <div className="whitespace-pre-wrap text-gray-800 leading-relaxed">
-                    {document.content}
-                  </div>
-                ) : (
-                  <p className="text-gray-500 italic">No content available</p>
-                )}
+              <div className="prose max-w-none whitespace-pre-wrap text-gray-800 leading-relaxed">
+                {document.content || 'No content available'}
               </div>
             </div>
           </div>
 
+          {/* Right Tabs */}
           <div className="w-96 bg-white border-l border-gray-200 overflow-y-auto">
             <div className="border-b border-gray-200">
               <div className="flex">
-                {(['permissions', 'notes', 'highlights', 'comments'] as const).map((tab) => (
+                {(['permissions', 'notes', 'highlights', 'comments'] as const).map(tab => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
@@ -289,191 +261,62 @@ export default function DocumentDetail() {
                         : 'border-transparent text-gray-600 hover:text-gray-900'
                     }`}
                   >
-                    {tab === 'permissions' && <Users className="w-4 h-4 mx-auto" />}
-                    {tab === 'notes' && <StickyNote className="w-4 h-4 mx-auto" />}
-                    {tab === 'highlights' && <Highlighter className="w-4 h-4 mx-auto" />}
-                    {tab === 'comments' && <MessageSquare className="w-4 h-4 mx-auto" />}
+                    {tab.toUpperCase()}
                   </button>
                 ))}
               </div>
             </div>
 
             <div className="p-4">
-              {activeTab === 'permissions' && (
+              {/* Comments Tab */}
+              {activeTab === 'comments' && (
                 <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-semibold text-gray-900">Permissions</h3>
-                    <button
-                      onClick={() => setShowAddPermission(true)}
-                      className="text-sm text-blue-600 hover:text-blue-700"
-                    >
-                      Add User
-                    </button>
-                  </div>
-
-                  {showAddPermission && (
-                    <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-                      <select
-                        value={selectedUser}
-                        onChange={(e) => setSelectedUser(e.target.value)}
-                        className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-lg"
-                      >
-                        <option value="">Select user...</option>
-                        {allProfiles
-                          .filter(p => !permissions.find(perm => perm.user_id === p.id))
-                          .map(p => (
-                            <option key={p.id} value={p.id}>{p.full_name} ({p.email})</option>
-                          ))}
-                      </select>
-                      <select
-                        value={permissionLevel}
-                        onChange={(e) => setPermissionLevel(e.target.value as 'view' | 'edit' | 'admin')}
-                        className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-lg"
-                      >
-                        <option value="view">View</option>
-                        <option value="edit">Edit</option>
-                        <option value="admin">Admin</option>
-                      </select>
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={handleAddPermission}
-                          className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                        >
-                          Add
-                        </button>
-                        <button
-                          onClick={() => setShowAddPermission(false)}
-                          className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    {permissions.map((perm) => {
-                      const user = allProfiles.find(p => p.id === perm.user_id);
-                      return (
-                        <div key={perm.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">{user?.full_name}</p>
-                            <p className="text-xs text-gray-600">{perm.permission_level}</p>
-                          </div>
-                          {document.uploaded_by === profile?.id && (
-                            <button
-                              onClick={() => handleDeletePermission(perm.id)}
-                              className="p-1 text-red-600 hover:bg-red-50 rounded"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'notes' && (
-                <div>
-                  <h3 className="font-semibold text-gray-900 mb-4">My Notes</h3>
-                  <div className="mb-4">
-                    <textarea
-                      value={newNote}
-                      onChange={(e) => setNewNote(e.target.value)}
-                      placeholder="Add a note..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg resize-none"
-                      rows={3}
-                    />
-                    <button
-                      onClick={handleAddNote}
-                      className="mt-2 w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                    >
-                      Add Note
-                    </button>
-                  </div>
-                  <div className="space-y-3">
-                    {notes.map((note) => (
-                      <div key={note.id} className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                        <p className="text-sm text-gray-800">{note.content}</p>
-                        <p className="text-xs text-gray-500 mt-2">
-                          {new Date(note.created_at).toLocaleString()}
-                        </p>
+                  <textarea
+                    value={newComment}
+                    onChange={e => setNewComment(e.target.value)}
+                    placeholder="Add a comment..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg resize-none"
+                    rows={3}
+                  />
+                  <button onClick={handleAddComment} className="mt-2 w-full flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                    <Send className="w-4 h-4" />
+                    <span>Post Comment</span>
+                  </button>
+                  <div className="space-y-4 mt-4">
+                    {comments.map(c => (
+                      <div key={c.id} className="border-b border-gray-200 pb-4">
+                        <p className="text-sm font-medium">{profile.full_name}</p>
+                        <p className="text-sm text-gray-700">{c.content}</p>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {activeTab === 'highlights' && (
+              {/* Notes Tab */}
+              {activeTab === 'notes' && (
                 <div>
-                  <h3 className="font-semibold text-gray-900 mb-4">My Highlights</h3>
-                  <div className="space-y-3">
-                    {highlights.length === 0 ? (
-                      <p className="text-sm text-gray-500 text-center py-8">
-                        No highlights yet. Use the highlight tool to mark important text.
-                      </p>
-                    ) : (
-                      highlights.map((highlight) => (
-                        <div key={highlight.id} className="p-3 rounded-lg" style={{ backgroundColor: highlight.color + '30' }}>
-                          <p className="text-sm text-gray-800">{highlight.text}</p>
-                          <p className="text-xs text-gray-500 mt-2">
-                            {new Date(highlight.created_at).toLocaleString()}
-                          </p>
-                        </div>
-                      ))
-                    )}
+                  <textarea
+                    value={newNote}
+                    onChange={e => setNewNote(e.target.value)}
+                    placeholder="Add a note..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg resize-none"
+                    rows={3}
+                  />
+                  <button onClick={handleAddNote} className="mt-2 w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
+                    Add Note
+                  </button>
+                  <div className="space-y-3 mt-4">
+                    {notes.map(n => (
+                      <div key={n.id} className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        {n.content}
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
 
-              {activeTab === 'comments' && (
-                <div>
-                  <h3 className="font-semibold text-gray-900 mb-4">Comments</h3>
-                  <div className="mb-4">
-                    <textarea
-                      value={newComment}
-                      onChange={(e) => setNewComment(e.target.value)}
-                      placeholder="Add a comment..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg resize-none"
-                      rows={3}
-                    />
-                    <button
-                      onClick={handleAddComment}
-                      className="mt-2 w-full flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                    >
-                      <Send className="w-4 h-4" />
-                      <span>Post Comment</span>
-                    </button>
-                  </div>
-                  <div className="space-y-4">
-                    {comments.map((comment) => {
-                      const author = allProfiles.find(p => p.id === comment.user_id);
-                      return (
-                        <div key={comment.id} className="border-b border-gray-200 pb-4">
-                          <div className="flex items-start space-x-3">
-                            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
-                              <span className="text-white text-xs font-medium">
-                                {author?.full_name?.charAt(0).toUpperCase() || 'U'}
-                              </span>
-                            </div>
-                            <div className="flex-1">
-                              <div className="flex items-center justify-between mb-1">
-                                <p className="text-sm font-medium text-gray-900">{author?.full_name || 'Unknown'}</p>
-                                <p className="text-xs text-gray-500">
-                                  {new Date(comment.created_at).toLocaleString()}
-                                </p>
-                              </div>
-                              <p className="text-sm text-gray-700">{comment.content}</p>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+              {/* Add highlights and permissions similarly */}
             </div>
           </div>
         </div>

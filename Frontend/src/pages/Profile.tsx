@@ -2,8 +2,13 @@ import { useState, useEffect } from 'react';
 import { User, Mail, Phone, Clock, Briefcase, Building, Shield, Activity, Edit2, Save, X } from 'lucide-react';
 import DashboardLayout from '../components/DashboardLayout';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
-import { Department } from '../types/database';
+
+type Department = {
+  id: string;
+  name: string;
+  color?: string;
+  description?: string;
+};
 
 export default function Profile() {
   const { profile } = useAuth();
@@ -17,62 +22,103 @@ export default function Profile() {
     working_hours: '',
     responsibilities: ''
   });
+  const [loadingDept, setLoadingDept] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+  // local helper to attach JWT
+  async function authFetch(url: string, options: RequestInit = {}) {
+    const token = localStorage.getItem('token');
+    const headers: any = {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+    return fetch(url, { ...options, headers });
+  }
 
   useEffect(() => {
     if (profile) {
       setFormData({
-        full_name: profile.full_name,
-        designation: profile.designation,
-        contact: profile.contact,
-        working_hours: profile.working_hours,
-        responsibilities: profile.responsibilities
+        full_name: (profile as any).full_name || '',
+        designation: (profile as any).designation || '',
+        contact: (profile as any).contact || '',
+        working_hours: (profile as any).working_hours || '',
+        responsibilities: (profile as any).responsibilities || ''
       });
 
-      if (profile.department_id) {
-        loadDepartment(profile.department_id);
+      if ((profile as any).department_id) {
+        loadDepartment((profile as any).department_id);
+      } else {
+        setDepartment(null);
       }
     }
   }, [profile]);
 
   const loadDepartment = async (deptId: string) => {
-    const { data } = await supabase
-      .from('departments')
-      .select('*')
-      .eq('id', deptId)
-      .maybeSingle();
-
-    if (data) setDepartment(data);
+    try {
+      setLoadingDept(true);
+      // backend provides GET /api/departments - fetch all and find by id
+      const res = await authFetch(`${API_URL}/departments`);
+      if (!res.ok) {
+        console.error('Failed to load departments');
+        return;
+      }
+      const data: Department[] = await res.json();
+      const found = data.find((d) => d.id === deptId || (d as any)._id === deptId);
+      setDepartment(found || null);
+    } catch (err) {
+      console.error('Error loading department', err);
+    } finally {
+      setLoadingDept(false);
+    }
   };
 
   const handleSave = async () => {
     if (!profile) return;
+    setSaving(true);
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({
+    try {
+      const payload = {
         full_name: formData.full_name,
         designation: formData.designation,
         contact: formData.contact,
         working_hours: formData.working_hours,
-        responsibilities: formData.responsibilities,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', profile.id);
+        responsibilities: formData.responsibilities
+      };
 
-    if (!error) {
+      const res = await authFetch(`${API_URL}/profile`, {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        const message = data?.message || 'Failed to save profile';
+        throw new Error(message);
+      }
+
+      // profile in context will refresh on reload; here we just update local state and stop editing
       setIsEditing(false);
+      // If your AuthContext automatically fetches profile changes on some event, great.
+      // Otherwise you can do a full reload to ensure context sync:
       window.location.reload();
+    } catch (err) {
+      console.error('Error saving profile', err);
+      alert((err as any).message || 'Failed to save profile');
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleCancel = () => {
     if (profile) {
       setFormData({
-        full_name: profile.full_name,
-        designation: profile.designation,
-        contact: profile.contact,
-        working_hours: profile.working_hours,
-        responsibilities: profile.responsibilities
+        full_name: (profile as any).full_name || '',
+        designation: (profile as any).designation || '',
+        contact: (profile as any).contact || '',
+        working_hours: (profile as any).working_hours || '',
+        responsibilities: (profile as any).responsibilities || ''
       });
     }
     setIsEditing(false);
@@ -98,22 +144,22 @@ export default function Profile() {
             <div className="px-8 pb-8">
               <div className="flex items-end justify-between -mt-16 mb-6">
                 <div className="flex items-end space-x-4">
-                  {profile.avatar_url ? (
+                  {(profile as any).avatar_url ? (
                     <img
-                      src={profile.avatar_url}
-                      alt={profile.full_name}
+                      src={(profile as any).avatar_url}
+                      alt={(profile as any).full_name}
                       className="w-32 h-32 rounded-full border-4 border-white shadow-lg object-cover"
                     />
                   ) : (
                     <div className="w-32 h-32 rounded-full border-4 border-white shadow-lg bg-blue-600 flex items-center justify-center">
                       <span className="text-white text-4xl font-bold">
-                        {profile.full_name?.charAt(0).toUpperCase() || 'U'}
+                        {(profile as any).full_name?.charAt(0).toUpperCase() || 'U'}
                       </span>
                     </div>
                   )}
                   <div className="mb-2">
-                    <h1 className="text-3xl font-bold text-gray-900">{profile.full_name}</h1>
-                    <p className="text-gray-600">{profile.designation || 'User'}</p>
+                    <h1 className="text-3xl font-bold text-gray-900">{(profile as any).full_name}</h1>
+                    <p className="text-gray-600">{(profile as any).designation || 'User'}</p>
                   </div>
                 </div>
 
@@ -129,10 +175,11 @@ export default function Profile() {
                   <div className="flex space-x-2">
                     <button
                       onClick={handleSave}
+                      disabled={saving}
                       className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
                     >
                       <Save className="w-4 h-4" />
-                      <span>Save</span>
+                      <span>{saving ? 'Saving...' : 'Save'}</span>
                     </button>
                     <button
                       onClick={handleCancel}
@@ -182,7 +229,7 @@ export default function Profile() {
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
                     ) : (
-                      <p className="text-gray-900 px-4 py-2 bg-gray-50 rounded-lg">{profile.full_name}</p>
+                      <p className="text-gray-900 px-4 py-2 bg-gray-50 rounded-lg">{(profile as any).full_name}</p>
                     )}
                   </div>
 
@@ -193,7 +240,7 @@ export default function Profile() {
                         <span>Email</span>
                       </div>
                     </label>
-                    <p className="text-gray-900 px-4 py-2 bg-gray-50 rounded-lg">{profile.email}</p>
+                    <p className="text-gray-900 px-4 py-2 bg-gray-50 rounded-lg">{(profile as any).email}</p>
                   </div>
 
                   <div>
@@ -211,7 +258,7 @@ export default function Profile() {
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
                     ) : (
-                      <p className="text-gray-900 px-4 py-2 bg-gray-50 rounded-lg">{profile.designation || 'Not specified'}</p>
+                      <p className="text-gray-900 px-4 py-2 bg-gray-50 rounded-lg">{(profile as any).designation || 'Not specified'}</p>
                     )}
                   </div>
 
@@ -223,7 +270,7 @@ export default function Profile() {
                       </div>
                     </label>
                     <p className="text-gray-900 px-4 py-2 bg-gray-50 rounded-lg">
-                      {department?.name || 'Not assigned'}
+                      {loadingDept ? 'Loading...' : department?.name || 'Not assigned'}
                     </p>
                   </div>
 
@@ -242,7 +289,7 @@ export default function Profile() {
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
                     ) : (
-                      <p className="text-gray-900 px-4 py-2 bg-gray-50 rounded-lg">{profile.contact || 'Not specified'}</p>
+                      <p className="text-gray-900 px-4 py-2 bg-gray-50 rounded-lg">{(profile as any).contact || 'Not specified'}</p>
                     )}
                   </div>
 
@@ -261,7 +308,7 @@ export default function Profile() {
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
                     ) : (
-                      <p className="text-gray-900 px-4 py-2 bg-gray-50 rounded-lg">{profile.working_hours}</p>
+                      <p className="text-gray-900 px-4 py-2 bg-gray-50 rounded-lg">{(profile as any).working_hours}</p>
                     )}
                   </div>
 
@@ -272,7 +319,7 @@ export default function Profile() {
                         <span>Employee ID</span>
                       </div>
                     </label>
-                    <p className="text-gray-900 px-4 py-2 bg-gray-50 rounded-lg">{profile.employee_id || 'Not assigned'}</p>
+                    <p className="text-gray-900 px-4 py-2 bg-gray-50 rounded-lg">{(profile as any).employee_id || 'Not assigned'}</p>
                   </div>
 
                   <div>
@@ -283,7 +330,7 @@ export default function Profile() {
                       </div>
                     </label>
                     <p className="text-gray-900 px-4 py-2 bg-gray-50 rounded-lg">
-                      {new Date(profile.last_login).toLocaleString()}
+                      {new Date((profile as any).last_login).toLocaleString()}
                     </p>
                   </div>
 
@@ -303,7 +350,7 @@ export default function Profile() {
                       />
                     ) : (
                       <p className="text-gray-900 px-4 py-2 bg-gray-50 rounded-lg whitespace-pre-wrap">
-                        {profile.responsibilities || 'No responsibilities assigned'}
+                        {(profile as any).responsibilities || 'No responsibilities assigned'}
                       </p>
                     )}
                   </div>
@@ -367,7 +414,7 @@ export default function Profile() {
                       <div className="flex-1">
                         <p className="text-sm text-gray-900">Logged into the system</p>
                         <p className="text-xs text-gray-500 mt-1">
-                          {new Date(profile.last_login).toLocaleString()}
+                          {new Date((profile as any).last_login).toLocaleString()}
                         </p>
                       </div>
                     </div>
@@ -377,7 +424,7 @@ export default function Profile() {
                       <div className="flex-1">
                         <p className="text-sm text-gray-900">Profile created</p>
                         <p className="text-xs text-gray-500 mt-1">
-                          {new Date(profile.created_at).toLocaleString()}
+                          {new Date((profile as any).created_at || (profile as any).createdAt).toLocaleString()}
                         </p>
                       </div>
                     </div>

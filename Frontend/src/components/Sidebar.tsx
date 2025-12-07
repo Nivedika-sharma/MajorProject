@@ -2,15 +2,14 @@ import { useState } from 'react';
 import {
   LayoutDashboard,
   Calendar,
-  FileText,
   Settings,
-  ChevronLeft,
-  ChevronRight,
   Users,
   DollarSign,
   Scale,
   Briefcase,
-  ShoppingCart
+  ShoppingCart,
+  Menu,
+  X
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -24,7 +23,6 @@ export default function Sidebar() {
   const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
     { icon: Calendar, label: 'Compliance Calendar', path: '/calendar' },
-    { icon: FileText, label: 'Recent Documents', path: '/dashboard' },
   ];
 
   const departmentItems = [
@@ -37,25 +35,42 @@ export default function Sidebar() {
 
   return (
     <aside
-      className={`bg-white border-r border-gray-200 transition-all duration-300 ${
+      className={`bg-blue-200 border-r border-gray-200 transition-all duration-300 ${
         collapsed ? 'w-20' : 'w-64'
       } flex flex-col h-[calc(100vh-73px)] sticky top-[73px]`}
     >
-      <div className="p-4 border-b border-gray-200">
-        {!collapsed && profile && (
-          <div className="mb-4">
-            <p className="text-sm font-semibold text-gray-900">{profile.full_name}</p>
-            <p className="text-xs text-gray-500">{profile.designation || 'User'}</p>
+      {/* TOP SECTION WITH PROFILE + HAMBURGER */}
+      <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+
+        {/* Profile Section */}
+        {!collapsed ? (
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center text-lg font-semibold">
+              {profile?.full_name?.charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <p className="text-lg font-semibold text-gray-900">{profile?.full_name}</p>
+              <p className="text-sm text-gray-500">{profile?.designation || "User"}</p>
+            </div>
+          </div>
+        ) : (
+          <div className="w-full flex justify-center">
+            <div className="w-8 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center text-lg font-semibold">
+              {profile?.full_name?.charAt(0).toUpperCase()}
+            </div>
           </div>
         )}
+
+        {/* Collapse / Expand Button */}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="w-full flex items-center justify-center p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+          className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
         >
-          {collapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
+          {collapsed ? <Menu className="w-6 h-6" /> : <X className="w-6 h-6" />}
         </button>
       </div>
 
+      {/* NAVIGATION SECTION */}
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
         <div className="space-y-1 mb-6">
           {menuItems.map((item) => {
@@ -78,6 +93,7 @@ export default function Sidebar() {
           })}
         </div>
 
+        {/* Departments Heading */}
         {!collapsed && (
           <div className="pt-4 border-t border-gray-200">
             <h3 className="px-3 mb-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
@@ -86,6 +102,7 @@ export default function Sidebar() {
           </div>
         )}
 
+        {/* Department Items */}
         <div className="space-y-1">
           {departmentItems.map((item) => {
             const Icon = item.icon;
@@ -102,6 +119,7 @@ export default function Sidebar() {
           })}
         </div>
 
+        {/* Settings */}
         <div className="pt-4 border-t border-gray-200 mt-4">
           <button
             onClick={() => navigate('/settings')}

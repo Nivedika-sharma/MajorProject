@@ -61,11 +61,11 @@ export default function TopNav() {
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
   return (
-    <nav className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-50 shadow-sm">
+    <nav className="bg-blue-200 border-b border-gray-200 px-6 py-4 sticky top-0 z-50 shadow-sm">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          <h1 className="text-2xl font-bold text-blue-600">UDIS</h1>
-          <span className="text-sm text-gray-500">Document Intelligence Platform</span>
+          <h1 className="text-4xl font-bold text-blue-600">UDIS</h1>
+          <span className="text-lg text-gray-900">Document Intelligence Platform</span>
         </div>
 
         <div className="flex items-center space-x-4">

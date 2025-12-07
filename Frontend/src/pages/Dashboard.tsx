@@ -13,6 +13,9 @@ import {
   Scale,
   Briefcase,
   ShoppingCart,
+  FileText,
+  Download,
+  Mail,
 } from "lucide-react";
 
 import DashboardLayout from "../components/DashboardLayout";
@@ -35,16 +38,24 @@ interface DocumentWithDetails {
   createdAt: string;
 }
 
+interface GmailFile {
+  id: string;
+  filename: string;
+  size: number;
+  mimeType: string;
+  messageId: string;
+  threadId: string;
+  url: string;
+}
+
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
-// Helper for authenticated requests
 async function authFetch(url: string, options: RequestInit = {}) {
   const token = localStorage.getItem("token");
   const headers: any = {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
-
   return fetch(url, { ...options, headers });
 }
 
@@ -54,6 +65,10 @@ export default function Dashboard() {
   const [selectedDepartment, setSelectedDepartment] = useState<string | null>(null);
   const [hoveredDoc, setHoveredDoc] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Gmail files
+  const [gmailLoading, setGmailLoading] = useState(false);
+  const [gmailFiles, setGmailFiles] = useState<GmailFile[]>([]);
 
   const navigate = useNavigate();
   const { profile } = useAuth();
@@ -84,8 +99,21 @@ export default function Dashboard() {
     setLoading(false);
   };
 
+  // ⭐ LOAD GMAIL DOCUMENTS
+  const loadGmailFiles = async () => {
+    setGmailLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/mail/files`);
+      const data = await res.json();
+      setGmailFiles(data);
+    } catch (err) {
+      console.error("Failed to load Gmail files:", err);
+    }
+    setGmailLoading(false);
+  };
+
   const getDepartmentIcon = (name: string) => {
-    const icons: Record<string, typeof Users> = {
+    const icons: Record<string, any> = {
       HR: Users,
       Finance: DollarSign,
       Legal: Scale,
@@ -118,10 +146,13 @@ export default function Dashboard() {
           <p className="text-gray-600">Welcome back, {profile?.full_name}!</p>
         </div>
 
-        {/* Recent Documents */}
+        {/* ==========================
+             📌 RECENT DOCUMENTS
+        =========================== */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-semibold text-gray-900">Recent Documents</h2>
+
             <div className="flex space-x-2">
               <button
                 onClick={loadData}
@@ -191,56 +222,6 @@ export default function Dashboard() {
                         </span>
                       )}
                     </div>
-
-                    {/* Buttons */}
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/document/${doc.id}`);
-                        }}
-                        className="flex-1 flex items-center justify-center space-x-1 px-3 py-2 text-sm bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg"
-                      >
-                        <Eye className="w-4 h-4" />
-                        <span>View</span>
-                      </button>
-
-                      <button
-                        onClick={(e) => e.stopPropagation()}
-                        className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-                      >
-                        <Share2 className="w-4 h-4" />
-                      </button>
-
-                      <button
-                        onClick={(e) => e.stopPropagation()}
-                        className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-                      >
-                        <Bookmark className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    {/* Hover popup */}
-                    {hoveredDoc === doc.id && (
-                      <div className="absolute -top-2 left-0 right-0 bg-white border border-gray-300 rounded-lg shadow-xl p-4 z-10 transform -translate-y-full">
-                        <h4 className="font-semibold text-sm text-gray-900 mb-2">
-                          {doc.title}
-                        </h4>
-                        <p className="text-xs text-gray-600 mb-2">{doc.summary}</p>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-gray-500">
-                            Uploaded by: {doc.uploaded_by?.full_name || "Unknown"}
-                          </span>
-                          <span
-                            className={`px-2 py-1 rounded border ${getUrgencyColor(
-                              doc.urgency
-                            )}`}
-                          >
-                            {doc.urgency}
-                          </span>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 ))}
               </div>
@@ -248,7 +229,81 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Department-wise circle layout */}
+        {/* ==========================
+             📩 GMAIL DOCUMENTS SECTION
+        =========================== */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+              <Mail className="w-5 h-5 text-blue-600" />
+              Gmail Attachments
+            </h2>
+
+            <button
+              onClick={loadGmailFiles}
+              className="flex items-center space-x-2 px-4 py-2 text-white bg-green-600 hover:bg-green-700 rounded-lg"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>Load Gmail</span>
+            </button>
+          </div>
+
+          {gmailLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600" />
+            </div>
+          ) : gmailFiles.length === 0 ? (
+            <div className="text-center py-10 text-gray-500">
+              <Mail className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+              <p>No Gmail attachments loaded</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto pb-4">
+              <div className="flex space-x-4 min-w-max">
+                {gmailFiles.map((file) => (
+                  <div
+                    key={file.id}
+                    className="bg-white border border-gray-200 rounded-lg p-5 w-80 hover:shadow-lg transition-all flex-shrink-0"
+                  >
+                    <div className="flex items-start justify-between">
+                      <h3 className="font-semibold text-gray-900 text-lg line-clamp-2">
+                        {file.filename}
+                      </h3>
+                    </div>
+
+                    <p className="text-sm text-gray-600 mb-4">
+                      {(file.size / 1024).toFixed(1)} KB • {file.mimeType}
+                    </p>
+
+                    <div className="flex items-center justify-between space-x-2">
+                      <a
+                        href={file.url}
+                        target="_blank"
+                        download
+                        className="flex-1 flex justify-center items-center px-3 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg"
+                      >
+                        <Download className="w-4 h-4 mr-1" />
+                        Download
+                      </a>
+
+                      <a
+                        href={`https://mail.google.com/mail/u/0/#inbox/${file.threadId}`}
+                        target="_blank"
+                        className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg"
+                      >
+                        <Mail className="w-4 h-4" />
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ==========================
+             🔵 DEPARTMENT CIRCLE LAYOUT
+        =========================== */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <h2 className="text-xl font-semibold text-gray-900 mb-6">
             Department-wise Documents
@@ -288,9 +343,7 @@ export default function Dashboard() {
                         )
                       }
                       className={`absolute w-28 h-28 rounded-full shadow-lg transition-all hover:scale-110 flex flex-col items-center justify-center space-y-2 ${
-                        selectedDepartment === dept.id
-                          ? "ring-4 ring-offset-2 scale-110"
-                          : ""
+                        selectedDepartment === dept.id ? "ring-4 ring-offset-2 scale-110" : ""
                       }`}
                       style={{
                         backgroundColor: dept.color,
@@ -330,9 +383,7 @@ export default function Dashboard() {
                       <h4 className="font-semibold text-gray-900 mb-2 line-clamp-1">
                         {doc.title}
                       </h4>
-                      <p className="text-sm text-gray-600 mb-3 line-clamp-2">
-                        {doc.summary}
-                      </p>
+                      <p className="text-sm text-gray-600 mb-3 line-clamp-2">{doc.summary}</p>
 
                       <div className="flex items-center justify-between">
                         <span
@@ -353,7 +404,6 @@ export default function Dashboard() {
             </div>
           )}
         </div>
-
       </div>
     </DashboardLayout>
   );

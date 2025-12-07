@@ -7,6 +7,7 @@ import authRoutes from './routes/authRoutes.js';
 import profileRoutes from './routes/profileRoutes.js';
 import departmentRoutes from './routes/departmentRoutes.js';
 import documentRoutes from './routes/documentRoutes.js';
+import mailRoutes from './routes/mailRoutes.js';
 // import permissionRoutes from './routes/permissionRoutes.js';
 // import commentRoutes from './routes/commentRoutes.js';
 // import highlightRoutes from './routes/highlightRoutes.js';
@@ -31,7 +32,8 @@ if (process.env.FILE_UPLOAD_PROVIDER === 'local') {
   const uploadsDir = process.env.UPLOADS_DIR || './src/uploads';
   if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
   // serve static files
-  app.use('/uploads', express.static(path.resolve(uploadsDir)));
+ app.use('/uploads', express.static('src/uploads'));
+
 }
 
 // Routes
@@ -39,6 +41,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/departments', departmentRoutes);
 app.use('/api/documents', documentRoutes);
+app.use("/api/mail", mailRoutes);
 // app.use('/api/permissions', permissionRoutes);
 // app.use('/api/comments', commentRoutes);
 // app.use('/api/highlights', highlightRoutes);

@@ -5,6 +5,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import DocumentDetail from './pages/DocumentDetail';
 import Profile from './pages/Profile';
+import DocumentUpload from './pages/DocumentUpload';
 
 function App() {
   return (
@@ -38,6 +39,7 @@ function App() {
           />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/upload" element={<ProtectedRoute><DocumentUpload /></ProtectedRoute>} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>

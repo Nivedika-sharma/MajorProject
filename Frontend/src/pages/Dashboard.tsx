@@ -99,7 +99,7 @@ export default function Dashboard() {
     setLoading(false);
   };
 
-  // ⭐ LOAD GMAIL DOCUMENTS
+  //  LOAD GMAIL DOCUMENTS
   const loadGmailFiles = async () => {
     setGmailLoading(true);
     try {

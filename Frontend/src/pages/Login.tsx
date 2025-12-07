@@ -33,7 +33,7 @@ export default function Login() {
           <div className="bg-white/80 backdrop-blur-sm rounded-3xl p-12 shadow-xl">
             <FileText className="w-32 h-32 text-blue-600 mb-6" />
             <h2 className="text-3xl font-bold text-gray-800 mb-4">
-              Document Intelligence Platform
+             Unified Document Intelligence System
             </h2>
             <p className="text-gray-600 text-lg">
               Streamline your document management and compliance workflows with AI-powered automation
@@ -110,7 +110,7 @@ export default function Login() {
           </form>
 
           <div className="mt-6 text-center text-sm text-gray-600">
-            Secure enterprise authentication powered by Supabase
+            Secure enterprise authentication powered by UDIS
           </div>
         </div>
       </div>

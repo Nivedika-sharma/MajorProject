@@ -8,50 +8,88 @@ import profileRoutes from './routes/profileRoutes.js';
 import departmentRoutes from './routes/departmentRoutes.js';
 import documentRoutes from './routes/documentRoutes.js';
 import mailRoutes from './routes/mailRoutes.js';
-// import permissionRoutes from './routes/permissionRoutes.js';
-// import commentRoutes from './routes/commentRoutes.js';
-// import highlightRoutes from './routes/highlightRoutes.js';
-// import bookmarkRoutes from './routes/bookmarkRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
+
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 
+// NEW for real-time
+import http from 'http';
+import { Server } from 'socket.io';
+
 dotenv.config();
+
+// -----------------------------
+// EXPRESS + SOCKET SERVER
+// -----------------------------
 const app = express();
+const server = http.createServer(app);
+
+// -----------------------------
+// SOCKET.IO INIT
+// -----------------------------
+export const io = new Server(server, {
+  cors: {
+    origin: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:5173'],
+    methods: ["GET", "POST"]
+  }
+});
+
+// Socket.io events
+io.on("connection", (socket) => {
+  console.log("🔌 Client connected:", socket.id);
+
+  socket.on("disconnect", () => {
+    console.log("❌ Client disconnected:", socket.id);
+  });
+});
+
+// -----------------------------
+// MIDDLEWARE
+// -----------------------------
 app.use(express.json());
 
-const origins = process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : ['*'];
-app.use(cors({ origin: origins }));
+const origins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',')
+  : ['http://localhost:5173'];
 
-// Connect DB
+app.use(cors({ origin: origins, credentials: true }));
+
+// -----------------------------
+// CONNECT DB
+// -----------------------------
 connectDB();
 
-// Ensure uploads dir exists when using local storage
+// -----------------------------
+// UPLOAD DIRECTORY
+// -----------------------------
 if (process.env.FILE_UPLOAD_PROVIDER === 'local') {
   const uploadsDir = process.env.UPLOADS_DIR || './src/uploads';
   if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-  // serve static files
- app.use('/uploads', express.static('src/uploads'));
 
+  app.use('/uploads', express.static('src/uploads'));
 }
 
-// Routes
+// -----------------------------
+// ROUTES
+// -----------------------------
 app.use('/api/auth', authRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/departments', departmentRoutes);
 app.use('/api/documents', documentRoutes);
-app.use("/api/mail", mailRoutes);
-// app.use('/api/permissions', permissionRoutes);
-// app.use('/api/comments', commentRoutes);
-// app.use('/api/highlights', highlightRoutes);
-// app.use('/api/bookmarks', bookmarkRoutes);
- app.use('/api/notifications', notificationRoutes);
+app.use('/api/mail', mailRoutes);
+app.use('/api/notifications', notificationRoutes);
 
-// Health
+// -----------------------------
+// HEALTH CHECK
+// -----------------------------
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
+// -----------------------------
+// SERVER LISTEN
+// -----------------------------
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+server.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });

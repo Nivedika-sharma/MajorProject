@@ -1,3 +1,5 @@
+import { io } from '../server.js';
+import Notification from '../models/Notification.js';
 import Document from '../models/Document.js';
 import DocumentPermission from '../models/DocumentPermission.js';
 import DocumentVersion from '../models/DocumentVersion.js';
@@ -162,5 +164,33 @@ export const deleteDocument = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+
+export const uploadDocument = async (req, res) => {
+  try {
+    const payload = {
+      title: req.body.title,
+      content: req.body.content || "",
+      uploaded_by: req.userId,
+      file_url: req.file ? `/uploads/${req.file.filename}` : null
+    };
+
+    const doc = await Document.create(payload);
+
+    const notification = await Notification.create({
+      userId: req.userId,
+      documentId: doc._id,
+      message: "New document uploaded"
+    });
+
+    io.emit("new-notification", notification);
+
+    res.json(doc);
+
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Upload failed" });
   }
 };

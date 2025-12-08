@@ -1,3 +1,5 @@
+import { io } from "socket.io-client";
+const socket = io("http://localhost:5000");
 import { useState, useEffect } from "react";
 import { Bell, Globe, LogOut, User } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
@@ -25,6 +27,16 @@ export default function TopNav() {
       loadNotifications();
     }
   }, [profile]);
+  
+  useEffect(() => {
+    socket.on("new-notification", (data) => {
+      setNotifications((prev) => [data, ...prev]);
+    });
+  
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
 
   // Helper fetch with JWT
   const authFetch = async (url: string, options: RequestInit = {}) => {

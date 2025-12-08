@@ -1,11 +1,14 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
-const NotificationSchema = new mongoose.Schema({
-  user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  title: { type: String, required: true },
-  message: { type: String, default: '' },
-  type: { type: String, default: 'general' },
-  related_id: { type: mongoose.Schema.Types.ObjectId }
-}, { timestamps: true });
+const notificationSchema = new mongoose.Schema(
+  {
+    user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    message: { type: String, required: true },
+    type: { type: String, default: "info" }, // info | success | warning
+    isRead: { type: Boolean, default: false },
+  },
+  { timestamps: true }
+);
 
-export default mongoose.model('Notification', NotificationSchema);
+const Notification = mongoose.model("Notification", notificationSchema);
+export default Notification;

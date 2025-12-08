@@ -12,7 +12,7 @@ import mailRoutes from './routes/mailRoutes.js';
 // import commentRoutes from './routes/commentRoutes.js';
 // import highlightRoutes from './routes/highlightRoutes.js';
 // import bookmarkRoutes from './routes/bookmarkRoutes.js';
-// import notificationRoutes from './routes/notificationRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -46,7 +46,7 @@ app.use("/api/mail", mailRoutes);
 // app.use('/api/comments', commentRoutes);
 // app.use('/api/highlights', highlightRoutes);
 // app.use('/api/bookmarks', bookmarkRoutes);
-// app.use('/api/notifications', notificationRoutes);
+ app.use('/api/notifications', notificationRoutes);
 
 // Health
 app.get('/api/health', (req, res) => res.json({ ok: true }));

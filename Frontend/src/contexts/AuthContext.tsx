@@ -48,11 +48,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       body: JSON.stringify({ email, password }),
     });
 
-    const data = await res.json(); // ✅ parse JSON only once
-
     if (!res.ok) {
-      throw new Error(data.message || 'Invalid credentials');
+      const errorData = await res.json();
+      throw new Error(errorData.message || 'Invalid credentials');
     }
+
+    const data = await res.json();
 
     const fullProfile: UserProfile = {
       id: data.user.id,

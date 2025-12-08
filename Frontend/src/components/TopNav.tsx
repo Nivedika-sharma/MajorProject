@@ -38,20 +38,18 @@ export default function TopNav() {
     return fetch(url, { ...options, headers });
   };
 
-  const loadNotifications = async () => {
-    if (!profile) return;
+const loadNotifications = async () => {
+  try {
+    const res = await authFetch(`${API_URL}/notifications/my`);
+    if (!res.ok) return;
 
-    try {
-      const res = await authFetch(`${API_URL}/notifications/my`);
-      const data = await res.json();
+    const data = await res.json();
+    setNotifications(data);
+  } catch (err) {
+    console.error("Error loading notifications:", err);
+  }
+};
 
-      if (res.ok) {
-        setNotifications(data);
-      }
-    } catch (e) {
-      console.error("Error loading notifications:", e);
-    }
-  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -151,13 +149,13 @@ export default function TopNav() {
                   key={notification.id}
                   className="p-4 border-b border-gray-100 hover:bg-gray-50"
                 >
-                  <h4 className="font-medium text-sm text-gray-900">
-                    {notification.title}
-                  </h4>
-                  <p className="text-xs text-gray-600 mt-1">{notification.message}</p>
-                  <span className="text-xs text-gray-400 mt-2 block">
+                  <p className="text-sm text-gray-900 font-medium">
+                    {notification.message}
+                  </p>
+                  <span className="text-xs text-gray-400 mt-1 block">
                     {new Date(notification.createdAt).toLocaleString()}
                   </span>
+
                 </div>
               ))
             )}

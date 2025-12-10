@@ -5,11 +5,28 @@ import { Upload } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
+// --- UNIVERSAL AUTH FETCH (fixes 401 for Google + email login) ---
+async function authFetch(url: string, options: RequestInit = {}) {
+  const token = localStorage.getItem("token");
+
+  const headers: any = {
+    ...(options.headers || {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
+  return fetch(url, {
+    ...options,
+    headers,
+    credentials: "include",
+  });
+}
+
 export default function DocumentUpload() {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [summary, setSummary] = useState("");
   const [loading, setLoading] = useState(false);
+
   const navigate = useNavigate();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -30,12 +47,9 @@ export default function DocumentUpload() {
     formData.append("summary", summary);
 
     try {
-      const token = localStorage.getItem("token");
-
-      const res = await fetch(`${API_URL}/documents`, {
+      const res = await authFetch(`${API_URL}/documents`, {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
+        body: formData, // IMPORTANT: do NOT add content-type manually
       });
 
       if (res.ok) {
@@ -45,6 +59,7 @@ export default function DocumentUpload() {
         const data = await res.json();
         alert(`Upload failed: ${data.message}`);
       }
+
     } catch (err) {
       console.error("Upload error:", err);
       alert("Error uploading document.");

@@ -1,29 +1,19 @@
+// src/middleware/auth.js
 import jwt from "jsonwebtoken";
-import User from "../models/User.js";
 
-export const authenticate = async (req, res, next) => {
+export default function auth(req, res, next) {
   try {
-    const authHeader = req.headers.authorization;
+    const authHeader = req.headers.authorization || req.cookies?.authorization;
+    if (!authHeader) return res.status(401).json({ error: "No token provided" });
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ message: "No token provided" });
-    }
+    const token = authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : authHeader;
+    if (!token) return res.status(401).json({ error: "Invalid token" });
 
-    const token = authHeader.split(" ")[1];
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    // 👇 ADD THIS LINE
-    req.userId = decoded.id;
-
-    req.user = await User.findById(decoded.id).select("-password");
-
-    if (!req.user) {
-      return res.status(401).json({ message: "User not found" });
-    }
-
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    req.userId = payload.id;
     next();
-  } catch (error) {
-    return res.status(401).json({ message: "Invalid or expired token" });
+  } catch (err) {
+    console.error("Auth middleware error:", err.message);
+    return res.status(401).json({ error: "Unauthorized" });
   }
-};
+}

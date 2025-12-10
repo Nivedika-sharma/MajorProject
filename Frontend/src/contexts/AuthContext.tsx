@@ -4,6 +4,8 @@ export interface UserProfile {
   id?: string;
   email: string;
   full_name: string;
+  avatar?: string;
+  avatar_url?: string;
 }
 
 interface AuthContextType {
@@ -27,15 +29,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Load user from localStorage on mount
   useEffect(() => {
     const token = localStorage.getItem('token');
     const storedProfile = localStorage.getItem('profile');
-    if (token && storedProfile) setProfile(JSON.parse(storedProfile));
+    if (token && storedProfile) {
+      setProfile(JSON.parse(storedProfile));
+    }
     setLoading(false);
   }, []);
 
-  // Email/Password login
   const signIn = async (email: string, password: string) => {
     const res = await fetch('http://localhost:5000/api/auth/login', {
       method: 'POST',
@@ -50,20 +52,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const data = await res.json();
     const fullProfile: UserProfile = { ...data.user };
+
     localStorage.setItem('token', data.token);
     localStorage.setItem('profile', JSON.stringify(fullProfile));
     setProfile(fullProfile);
   };
 
-  // Google OAuth login
-// inside AuthContext.tsx
-const saveOAuthLogin = (token: string, userProfile: UserProfile) => {
-  localStorage.setItem("token", token);
-  localStorage.setItem("profile", JSON.stringify(userProfile));
-  setProfile(userProfile);
-};
-
-
+  const saveOAuthLogin = (token: string, userProfile: UserProfile) => {
+    localStorage.setItem("token", token);
+    localStorage.setItem("profile", JSON.stringify(userProfile));
+    setProfile(userProfile);
+  };
 
   const signOut = () => {
     localStorage.removeItem('token');
@@ -71,15 +70,20 @@ const saveOAuthLogin = (token: string, userProfile: UserProfile) => {
     setProfile(null);
   };
 
-  // Get current auth token for API calls
-  const getAuthToken = () => {
-    return localStorage.getItem('token');
-  };
+  const getAuthToken = () => localStorage.getItem('token');
 
   return (
-   <AuthContext.Provider value={{ profile, signIn, signOut, loading, saveOAuthLogin, getAuthToken }}>
-  {children}
-</AuthContext.Provider>
-
+    <AuthContext.Provider
+      value={{
+        profile,
+        signIn,
+        signOut,
+        loading,
+        saveOAuthLogin,
+        getAuthToken
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
   );
 };

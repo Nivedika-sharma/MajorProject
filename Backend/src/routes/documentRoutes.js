@@ -1,5 +1,5 @@
 import express from 'express';
-import { authenticate } from '../middleware/auth.js';
+import  auth  from '../middleware/auth.js';
 import {
   createDocument,
   getDocument,
@@ -13,10 +13,10 @@ const router = express.Router();
 
 const uploadField = upload.single('file');
 
-router.post('/', authenticate, uploadField, createDocument);
-router.get('/', authenticate, listDocuments);
-router.get('/:id', authenticate, getDocument);
-router.put('/:id', authenticate, uploadField, updateDocument);
-router.delete('/:id', authenticate, deleteDocument);
+router.post('/', auth, uploadField, createDocument);
+router.get('/', auth, listDocuments);
+router.get('/:id', auth, getDocument);
+router.put('/:id', auth, uploadField, updateDocument);
+router.delete('/:id', auth, deleteDocument);
 
 export default router;

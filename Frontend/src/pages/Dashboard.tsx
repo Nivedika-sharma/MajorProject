@@ -9,8 +9,7 @@ import {
   Scale,
   Briefcase,
   ShoppingCart,
-  Mail,
-  Download,
+  Mail
 } from "lucide-react";
 
 import DashboardLayout from "../components/DashboardLayout";
@@ -39,17 +38,30 @@ interface GmailFile {
   mimeType: string;
   url: string;
   threadId: string;
+  uploadedAt: string;
+  from?: string;
 }
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const API_URL = `${BASE_URL}`;
 
-async function authFetch(url: string, options: RequestInit = {}) {
+export async function authFetch(url: string, options: RequestInit = {}) {
   const token = localStorage.getItem("token");
-  const headers: any = {
+
+  const baseHeaders: Record<string, string> = {
     "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
-  return fetch(url, { ...options, headers, credentials: "include" });
+
+  if (token) baseHeaders.Authorization = `Bearer ${token}`;
+
+  return fetch(url, {
+    ...options,
+    credentials: "include",
+    headers: {
+      ...baseHeaders,
+      ...(options.headers || {}),
+    },
+  });
 }
 
 export default function Dashboard() {
@@ -92,12 +104,9 @@ export default function Dashboard() {
   const loadGmailFiles = async () => {
     setGmailLoading(true);
     try {
-      const res = await fetch(`${API_URL}/mail/files`, {
+      const res = await fetch(`${BASE_URL}/api/mail/files`, {
         method: "GET",
-        credentials: "include",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
 
       const files = await res.json();
@@ -127,7 +136,6 @@ export default function Dashboard() {
     return icons[name] || Briefcase;
   };
 
-  // ✅ Ensure filteredDocuments is always an array
   const filteredDocuments = Array.isArray(documents)
     ? selectedDepartment
       ? documents.filter((d) => d.department_id === selectedDepartment)
@@ -142,7 +150,7 @@ export default function Dashboard() {
         <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
         <p className="text-gray-600 mb-6">Welcome back, {profile?.full_name}!</p>
 
-        {/* Recent Documents */}
+        {/* --------------- Recent Documents ---------------- */}
         <div className="bg-white p-6 rounded-xl shadow-sm border mb-8">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-semibold">Recent Documents</h2>
@@ -204,7 +212,7 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Gmail Files */}
+        {/* ---------------- Gmail Files ---------------- */}
         <div className="bg-white p-6 rounded-xl shadow-sm border mb-8">
           <div className="flex justify-between mb-6">
             <h2 className="text-xl font-semibold flex items-center gap-2">
@@ -223,28 +231,35 @@ export default function Dashboard() {
           ) : gmailFiles.length === 0 ? (
             <p className="text-center text-gray-500 py-10">No Gmail files</p>
           ) : (
-            <div className="flex overflow-x-auto gap-4 pb-4">
+            <div className="flex overflow-x-auto space-x-4 pb-4">
               {gmailFiles.map((file) => (
-                <div key={file.id} className="border p-4 rounded-lg w-80 hover:shadow-md">
-                  <h3 className="font-semibold mb-2">{file.filename}</h3>
-                  <p className="text-sm text-gray-600 mb-3">
-                    {(file.size / 1024).toFixed(1)} KB • {file.mimeType}
+                <div
+                  key={file.id}
+                  className="border rounded-lg p-4 w-80 cursor-pointer hover:shadow-lg transition"
+                  onClick={() => window.open(file.url, "_blank")}
+                >
+                  <div className="flex justify-between mb-3">
+                    <h3 className="font-semibold line-clamp-2">{file.filename}</h3>
+                    <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800 border border-blue-200">
+                      {(file.size / 1024).toFixed(1)} KB
+                    </span>
+                  </div>
+
+                  <p className="text-sm text-gray-600 line-clamp-2 mb-3">
+                    {file.mimeType}
                   </p>
-                  <div className="flex justify-between">
-                    <a
-                      href={file.url}
-                      target="_blank"
-                      className="px-3 py-2 bg-blue-100 rounded-lg flex items-center gap-2"
-                    >
-                      <Download className="w-4 h-4" /> Download
-                    </a>
-                    <a
-                      href={`https://mail.google.com/mail/u/0/#inbox/${file.threadId}`}
-                      target="_blank"
-                      className="p-2 bg-gray-100 rounded-lg"
-                    >
-                      <Mail className="w-4 h-4" />
-                    </a>
+
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {new Date(file.uploadedAt).toLocaleDateString()}
+                    </span>
+
+                    {file.from && (
+                      <span className="px-2 py-1 bg-gray-100 rounded-full text-gray-700">
+                        {file.from.split("<")[0].trim()}
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}
@@ -252,7 +267,7 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Department Wheel */}
+        {/* ---------------- Department Wheel ---------------- */}
         <div className="bg-white p-6 rounded-xl shadow-sm border">
           <h2 className="text-xl font-semibold mb-6">Department-wise Documents</h2>
           <div className="flex items-center justify-center mb-8">

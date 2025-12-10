@@ -102,21 +102,21 @@ export default function Dashboard() {
   };
 
   const loadGmailFiles = async () => {
-    setGmailLoading(true);
-    try {
-      const res = await fetch(`${BASE_URL}/api/mail/files`, {
-        method: "GET",
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-      });
+  setGmailLoading(true);
+  try {
+    const res = await authFetch(`${API_URL}/mail/files`, {
+      method: "GET",
+    });
 
-      const files = await res.json();
-      setGmailFiles(Array.isArray(files) ? files : files.data || []);
-    } catch (e) {
-      console.error("Gmail fetch error:", e);
-      setGmailFiles([]);
-    }
-    setGmailLoading(false);
-  };
+    const files = await res.json();
+    setGmailFiles(Array.isArray(files) ? files : files.data || []);
+  } catch (e) {
+    console.error("Gmail fetch error:", e);
+    setGmailFiles([]);
+  }
+  setGmailLoading(false);
+};
+
 
   const getUrgencyColor = (u: string) =>
     ({

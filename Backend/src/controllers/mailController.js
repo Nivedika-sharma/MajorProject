@@ -1,31 +1,19 @@
-import mongoose from "mongoose";
+// src/controllers/mailController.js
 import { google } from "googleapis";
-import { Readable } from "stream";
 import GmailToken from "../models/GmailToken.js";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
+import { Readable } from "stream";
+import { getGFS } from "../utils/gridfs.js";
+import mongoose from "mongoose";  
 
-// -------------------------------
-// GRIDFS INIT
-// -------------------------------
-let gfs;
-
-mongoose.connection.on("connected", () => {
-  gfs = new mongoose.mongo.GridFSBucket(mongoose.connection.db, {
-    bucketName: "mailUploads",
-  });
-});
-
-// -------------------------------
-// GOOGLE OAUTH INIT
-// -------------------------------
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
   process.env.GOOGLE_REDIRECT_URI
 );
 
-// Save new refresh tokens when issued
+// Save refresh token
 oauth2Client.on("tokens", async (tokens) => {
   if (tokens.refresh_token) {
     await GmailToken.deleteMany();
@@ -34,107 +22,77 @@ oauth2Client.on("tokens", async (tokens) => {
   }
 });
 
-// -------------------------------
-// STEP 1: GENERATE GOOGLE LOGIN URL
-// -------------------------------
+// Generate Google Auth URL
 export const authViaGoogle = (req, res) => {
   const url = oauth2Client.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
     scope: [
-      // Identity scopes (REQUIRED)
       "openid",
       "https://www.googleapis.com/auth/userinfo.email",
       "https://www.googleapis.com/auth/userinfo.profile",
-
-      // Gmail access
       "https://www.googleapis.com/auth/gmail.modify",
       "https://www.googleapis.com/auth/gmail.readonly",
     ],
   });
-
   res.json({ authUrl: url });
 };
 
-// -------------------------------
-// STEP 2: GOOGLE CALLBACK
-// -------------------------------
+// Google OAuth callback
 export const googleCallback = async (req, res) => {
   try {
     const { code } = req.query;
     if (!code) return res.status(400).send("Missing code");
 
-    // Exchange code for tokens
     const { tokens } = await oauth2Client.getToken(code);
     oauth2Client.setCredentials(tokens);
 
-    console.log("🔐 TOKENS:", tokens);
-
-    // Save refresh token for Gmail usage
     if (tokens.refresh_token) {
       await GmailToken.deleteMany();
       await GmailToken.create(tokens);
     }
 
-    // Fetch User Info (IMPORTANT)
     const oauth2 = google.oauth2({ version: "v2", auth: oauth2Client });
     const { data: userinfo } = await oauth2.userinfo.get();
 
-    const email = userinfo.email;
-    const full_name = userinfo.name || "Google User";
-
-    // Find or create backend user
-    let user = await User.findOne({ email });
+    let user = await User.findOne({ email: userinfo.email });
     if (!user) {
       user = await User.create({
-        full_name,
-        email,
+        full_name: userinfo.name || "Google User",
+        email: userinfo.email,
         password: "google-oauth",
       });
     }
 
-    // Create your own JWT
-    const appToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "7d",
-    });
+    const appToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
-    // Redirect front-end
     const redirectUrl = `${
       process.env.FRONTEND_URL || "http://localhost:5173"
     }/login?googleToken=${appToken}&profile=${encodeURIComponent(
-      JSON.stringify({ full_name, email })
+      JSON.stringify({ full_name: user.full_name, email: user.email })
     )}`;
 
-    return res.redirect(redirectUrl);
+    res.redirect(redirectUrl);
   } catch (err) {
     console.error("❌ googleCallback error:", err);
-    return res.status(500).send("Google OAuth failed");
+    res.status(500).send("Google OAuth failed");
   }
 };
 
-// -------------------------------
-// STEP 3: LOAD TOKEN FOR GMAIL API
-// -------------------------------
-export async function loadToken() {
+// Load saved Gmail token
+export const loadToken = async () => {
   const savedToken = await GmailToken.findOne();
   if (!savedToken) return null;
 
   oauth2Client.setCredentials(savedToken);
   return oauth2Client;
-}
-
-// -------------------------------
-// STEP 4: FETCH GMAIL ATTACHMENTS
-// -------------------------------
+};
 export const fetchMailAttachments = async (req, res) => {
   try {
     const client = await loadToken();
-    if (!client)
-      return res.status(401).json({ error: "Not authenticated with Gmail" });
+    if (!client) return res.status(401).json({ error: "Not authenticated with Gmail" });
 
     const gmail = google.gmail({ version: "v1", auth: client });
-
-    // Fetch unread mails with attachments
     const { data } = await gmail.users.messages.list({
       userId: "me",
       q: "is:unread has:attachment",
@@ -143,6 +101,8 @@ export const fetchMailAttachments = async (req, res) => {
     const messages = data.messages || [];
     const savedFiles = [];
 
+    const gfs = getGFS(); // safe GridFS access
+
     for (const mail of messages) {
       const msg = await gmail.users.messages.get({
         userId: "me",
@@ -150,8 +110,7 @@ export const fetchMailAttachments = async (req, res) => {
         format: "full",
       });
 
-      const parts = msg?.data?.payload?.parts || [];
-
+      const parts = msg.data.payload.parts || [];
       for (const part of parts) {
         if (!part.filename || !part.body.attachmentId) continue;
 
@@ -162,11 +121,9 @@ export const fetchMailAttachments = async (req, res) => {
         });
 
         const fileBuffer = Buffer.from(attachment.data.data, "base64");
-
         const uploadStream = gfs.openUploadStream(part.filename, {
           metadata: {
-            from: msg.data.payload.headers.find((h) => h.name === "From")
-              ?.value,
+            from: msg.data.payload.headers.find((h) => h.name === "From")?.value || "",
             threadId: msg.data.threadId,
           },
         });
@@ -179,7 +136,7 @@ export const fetchMailAttachments = async (req, res) => {
         savedFiles.push({ filename: part.filename });
       }
 
-      // Mark as read
+      // mark mail as read
       await gmail.users.messages.modify({
         userId: "me",
         id: mail.id,
@@ -187,51 +144,64 @@ export const fetchMailAttachments = async (req, res) => {
       });
     }
 
-    res.json({
-      message: `Saved ${savedFiles.length} attachments`,
-      saved: savedFiles,
-    });
+    res.json({ message: `Saved ${savedFiles.length} attachments`, saved: savedFiles });
   } catch (err) {
     console.error("❌ fetchMailAttachments error:", err);
-    res.status(500).json({ error: "Failed to fetch mail" });
+    res.status(500).json({ error: err.message || "Failed to fetch mail" });
   }
 };
 
-// -------------------------------
-// STEP 5: LIST UPLOADED MAIL FILES
-// -------------------------------
+
 export const listMailFiles = async (req, res) => {
   try {
-    gfs.find().toArray((err, files) => {
-      if (err || !files) return res.status(500).json({ error: "Failed to list files" });
+    await getGFS(); // ensure GridFS is ready
 
-      const mapped = files.map((f) => ({
-        id: f._id.toString(),
-        filename: f.filename,
-        size: f.length,
-        mimeType: f.contentType || "application/octet-stream",
-        url: `${process.env.BACKEND_URL || "http://localhost:5000"}/api/mail/files/${f._id}/download`,
-        threadId: f.metadata?.threadId || "",
-        from: f.metadata?.from || "",
-        uploadedAt: f.uploadDate,
-      }));
+    const files = await mongoose.connection.db
+      .collection("mailUploads.files")
+      .find()
+      .toArray();
 
-      res.json(mapped);
-    });
+    if (!files || files.length === 0) {
+      return res.status(404).json({ message: "No files found" });
+    }
+
+    res.json(files);
   } catch (err) {
     console.error("❌ listMailFiles error:", err);
-    res.status(500).json({ error: "Failed to list files" });
+    res.status(500).json({ error: err.message });
   }
 };
 
-// -------------------------------
-// STEP 6: DOWNLOAD FILE
-// -------------------------------
-export const downloadMailFile = (req, res) => {
+/**
+ * Download a file by filename
+ */
+export const downloadMailFile = async (req, res) => {
   try {
-    const id = new mongoose.Types.ObjectId(req.params.id);
-    gfs.openDownloadStream(id).pipe(res);
+    const { filename } = req.params;
+    if (!filename) return res.status(400).json({ message: "Filename required" });
+
+    const gfs = await getGFS();
+
+    // Find file first
+    const file = await mongoose.connection.db
+      .collection("mailUploads.files")
+      .findOne({ filename });
+
+    if (!file) return res.status(404).json({ message: "File not found" });
+
+    res.set("Content-Type", file.contentType);
+    res.set("Content-Disposition", `attachment; filename="${file.filename}"`);
+
+    const downloadStream = gfs.openDownloadStream(file._id);
+    downloadStream.pipe(res);
+
+    downloadStream.on("error", (err) => {
+      console.error("❌ downloadMailFile error:", err);
+      res.status(500).json({ error: "Error downloading file" });
+    });
   } catch (err) {
-    return res.status(404).json({ error: "File not found" });
+    console.error("❌ downloadMailFile error:", err);
+    res.status(500).json({ error: err.message });
   }
 };
+

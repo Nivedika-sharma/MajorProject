@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FileText, Lock, Mail, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -9,9 +9,42 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signIn } = useAuth();
+
+  const { signIn, saveOAuthLogin } = useAuth();
   const navigate = useNavigate();
 
+  // ✅ Handle Google OAuth redirect
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const googleToken = params.get('googleToken');
+    const profileData = params.get('profile');
+
+    if (googleToken && profileData) {
+      try {
+        const profile = JSON.parse(profileData);
+        saveOAuthLogin(googleToken, profile); // save token & profile in context
+        navigate('/dashboard'); // redirect after login
+      } catch (err) {
+        console.error('Error parsing Google profile:', err);
+      }
+    }
+  }, []);
+
+  // Redirect user to Google OAuth login
+  const handleGoogleLogin = async () => {
+    try {
+      const res = await fetch('http://localhost:5000/api/mail/google', {
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (data.authUrl) window.location.href = data.authUrl;
+    } catch (err) {
+      console.error('Google login failed', err);
+      setError('Google login failed. Try again.');
+    }
+  };
+
+  // Handle normal email/password login
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -19,9 +52,9 @@ export default function Login() {
 
     try {
       await signIn(email, password);
-      navigate('/dashboard'); // ✅ redirect after login
+      navigate('/dashboard');
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Login failed');
     } finally {
       setLoading(false);
     }
@@ -30,6 +63,7 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-100 flex items-center justify-center p-4">
       <div className="w-full max-w-6xl grid md:grid-cols-2 gap-8 items-center">
+        {/* Left info panel */}
         <div className="hidden md:flex flex-col items-center justify-center p-12">
           <div className="bg-white/80 backdrop-blur-sm rounded-3xl p-12 shadow-xl">
             <FileText className="w-32 h-32 text-blue-600 mb-6" />
@@ -42,6 +76,7 @@ export default function Login() {
           </div>
         </div>
 
+        {/* Login form */}
         <div className="bg-white rounded-2xl shadow-2xl p-8 md:p-12">
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back</h1>
@@ -114,6 +149,14 @@ export default function Login() {
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
             >
               {loading ? 'Signing in...' : 'Sign In'}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleGoogleLogin}
+              className="w-full mt-4 bg-red-500 hover:bg-red-600 text-white font-medium py-3 px-4 rounded-lg shadow-lg"
+            >
+              Continue with Google
             </button>
           </form>
 

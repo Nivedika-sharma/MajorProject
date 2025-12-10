@@ -2,6 +2,7 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
+import cookieParser from "cookie-parser"
 import connectDB from './config/db.js';
 import authRoutes from './routes/authRoutes.js';
 import profileRoutes from './routes/profileRoutes.js';
@@ -49,6 +50,8 @@ io.on("connection", (socket) => {
 // MIDDLEWARE
 // -----------------------------
 app.use(express.json());
+app.use(cookieParser());
+
 
 const origins = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(',')

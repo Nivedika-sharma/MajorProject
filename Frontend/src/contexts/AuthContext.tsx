@@ -1,19 +1,17 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 
 export interface UserProfile {
-  id: string;
+  id?: string;
   email: string;
   full_name: string;
-  department?: string;
-  designation?: string;
-  working_hours?: string;
-  avatar_url?: string;
 }
 
 interface AuthContextType {
   profile: UserProfile | null;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => void;
+  saveOAuthLogin: (token: string, profile: UserProfile) => void;
+  getAuthToken: () => string | null;
   loading: boolean;
 }
 
@@ -29,18 +27,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Load token from localStorage on mount
+  // Load user from localStorage on mount
   useEffect(() => {
     const token = localStorage.getItem('token');
     const storedProfile = localStorage.getItem('profile');
-
-    if (token && storedProfile) {
-      setProfile(JSON.parse(storedProfile));
-    }
-
+    if (token && storedProfile) setProfile(JSON.parse(storedProfile));
     setLoading(false);
   }, []);
 
+  // Email/Password login
   const signIn = async (email: string, password: string) => {
     const res = await fetch('http://localhost:5000/api/auth/login', {
       method: 'POST',
@@ -54,22 +49,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const data = await res.json();
-
-    const fullProfile: UserProfile = {
-      id: data.user.id,
-      email: data.user.email,
-      full_name: data.user.full_name,
-      department: data.user.department,
-      designation: data.user.designation,
-      working_hours: data.user.working_hours,
-      avatar_url: data.user.avatar_url,
-    };
-
+    const fullProfile: UserProfile = { ...data.user };
     localStorage.setItem('token', data.token);
     localStorage.setItem('profile', JSON.stringify(fullProfile));
-
     setProfile(fullProfile);
   };
+
+  // Google OAuth login
+// inside AuthContext.tsx
+const saveOAuthLogin = (token: string, userProfile: UserProfile) => {
+  localStorage.setItem("token", token);
+  localStorage.setItem("profile", JSON.stringify(userProfile));
+  setProfile(userProfile);
+};
+
+
 
   const signOut = () => {
     localStorage.removeItem('token');
@@ -77,9 +71,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setProfile(null);
   };
 
+  // Get current auth token for API calls
+  const getAuthToken = () => {
+    return localStorage.getItem('token');
+  };
+
   return (
-    <AuthContext.Provider value={{ profile, signIn, signOut, loading }}>
-      {children}
-    </AuthContext.Provider>
+   <AuthContext.Provider value={{ profile, signIn, signOut, loading, saveOAuthLogin, getAuthToken }}>
+  {children}
+</AuthContext.Provider>
+
   );
 };

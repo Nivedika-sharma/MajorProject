@@ -219,6 +219,40 @@ export const listMailFiles = async (req, res) => {
 };
 
 // -----------------------------
+// ✅ Get single file details - ONLY if it belongs to current user
+// -----------------------------
+export const getMailFile = async (req, res) => {
+  try {
+    const userId = req.userId || req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
+    const { id } = req.params;
+
+    const file = await mongoose.connection.db
+      .collection("mailUploads.files")
+      .findOne({ _id: new mongoose.Types.ObjectId(id) });
+
+    if (!file) {
+      return res.status(404).json({ message: "File not found" });
+    }
+
+    // ✅ Check if file belongs to current user
+    if (file.metadata?.userId !== userId.toString()) {
+      console.log(`❌ User ${userId} tried to access file owned by ${file.metadata?.userId}`);
+      return res.status(403).json({ message: "Access denied. This file does not belong to you." });
+    }
+
+    console.log(`✅ User ${userId} accessing their file: ${file.filename}`);
+    res.json(file);
+  } catch (err) {
+    console.error("❌ getMailFile error:", err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// -----------------------------
 // ✅ FIX: Download file - ONLY if it belongs to current user
 // -----------------------------
 export const downloadMailFile = async (req, res) => {

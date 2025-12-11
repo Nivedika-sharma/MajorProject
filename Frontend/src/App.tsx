@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
+import AuthCallback from './pages/AuthCallback'; // ✅ Add this import
 import Dashboard from './pages/Dashboard';
 import DocumentDetail from './pages/DocumentDetail';
 import Profile from './pages/Profile';
@@ -12,7 +13,11 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
+          {/* Public Routes */}
           <Route path="/login" element={<Login />} />
+          <Route path="/auth-callback" element={<AuthCallback />} /> {/* ✅ Add this route - NO ProtectedRoute wrapper */}
+          
+          {/* Protected Routes */}
           <Route
             path="/dashboard"
             element={
@@ -37,9 +42,18 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route 
+            path="/upload" 
+            element={
+              <ProtectedRoute>
+                <DocumentUpload />
+              </ProtectedRoute>
+            } 
+          />
+          
+          {/* Default Routes */}
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/upload" element={<ProtectedRoute><DocumentUpload /></ProtectedRoute>} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>

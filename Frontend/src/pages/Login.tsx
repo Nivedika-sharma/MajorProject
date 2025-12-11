@@ -1,3 +1,4 @@
+// src/pages/Login.tsx
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FileText, Lock, Mail, Eye, EyeOff } from 'lucide-react';
@@ -10,24 +11,19 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const { signIn, saveOAuthLogin } = useAuth();
+  const { signIn } = useAuth();
   const navigate = useNavigate();
 
+  // ✅ Check if user is already logged in
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const googleToken = params.get('googleToken');
-    const profileData = params.get('profile');
-
-    if (googleToken && profileData) {
-      try {
-        const profile = JSON.parse(profileData);
-        saveOAuthLogin(googleToken, profile);
-        navigate('/dashboard');
-      } catch (err) {
-        console.error('Error parsing Google profile:', err);
-      }
+    const token = localStorage.getItem("token");
+    const profile = localStorage.getItem("profile");
+    
+    if (token && profile) {
+      console.log("🔵 User already logged in, redirecting to dashboard");
+      navigate("/dashboard");
     }
-  }, []);
+  }, [navigate]);
 
   const handleGoogleLogin = async () => {
     try {
@@ -36,7 +32,10 @@ export default function Login() {
       });
 
       const data = await res.json();
-      if (data.authUrl) window.location.href = data.authUrl;
+      if (data.authUrl) {
+        console.log("🔵 Redirecting to Google OAuth");
+        window.location.href = data.authUrl;
+      }
     } catch (err) {
       console.error('Google login failed', err);
       setError('Google login failed. Try again.');
@@ -134,15 +133,24 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition-all"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition-all disabled:opacity-50"
             >
               {loading ? 'Signing in...' : 'Sign In'}
             </button>
 
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-300"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-white text-gray-500">Or continue with</span>
+              </div>
+            </div>
+
             <button
               type="button"
               onClick={handleGoogleLogin}
-              className="w-full border border-gray-300 py-3 rounded-lg flex items-center justify-center gap-2 hover:bg-gray-100"
+              className="w-full border border-gray-300 py-3 rounded-lg flex items-center justify-center gap-2 hover:bg-gray-50 transition-all"
             >
               <Mail className="w-5 h-5" /> Sign in with Google
             </button>

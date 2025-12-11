@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+// src/pages/Dashboard.tsx
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Upload,
@@ -43,7 +44,7 @@ interface GmailFile {
 }
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
-const API_URL = `${BASE_URL}`;
+const API_URL = `${BASE_URL}`.replace(/\/$/, "");
 
 export async function authFetch(url: string, options: RequestInit = {}) {
   const token = localStorage.getItem("token");
@@ -73,19 +74,47 @@ export default function Dashboard() {
   const [gmailFiles, setGmailFiles] = useState<GmailFile[]>([]);
   const [gmailLoading, setGmailLoading] = useState(false);
 
-  const { profile } = useAuth();
+  const { profile, saveOAuthLogin, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
+  // OAuth is now handled in AuthCallback.tsx
+
+  // ✅ Check authentication and redirect if needed
   useEffect(() => {
-    if (profile) loadData();
+    if (authLoading) {
+      console.log("⏳ Auth still loading...");
+      return;
+    }
+
+    console.log("🔵 Dashboard - Auth check");
+    console.log("🔵 Profile:", profile);
+    
+    if (!profile) {
+      console.log("❌ No profile, redirecting to login in 500ms");
+      const timer = setTimeout(() => {
+        navigate("/login", { replace: true });
+      }, 500);
+      return () => clearTimeout(timer);
+    } else {
+      console.log("✅ User authenticated:", profile.email);
+    }
+  }, [profile, authLoading, navigate]);
+
+  // ✅ Load data when profile is available
+  useEffect(() => {
+    if (profile) {
+      console.log("✅ Loading dashboard data...");
+      loadData();
+      loadGmailFiles();
+    }
   }, [profile]);
 
   const loadData = async () => {
     setLoading(true);
     try {
       const [docsRes, deptRes] = await Promise.all([
-        authFetch(`${API_URL}/documents`),
-        authFetch(`${API_URL}/departments`),
+        authFetch(`${API_URL}/api/documents`),
+        authFetch(`${API_URL}/api/departments`),
       ]);
 
       const docsJson = await docsRes.json();
@@ -102,21 +131,22 @@ export default function Dashboard() {
   };
 
   const loadGmailFiles = async () => {
-  setGmailLoading(true);
-  try {
-    const res = await authFetch(`${API_URL}/mail/files`, {
-      method: "GET",
-    });
-
-    const files = await res.json();
-    setGmailFiles(Array.isArray(files) ? files : files.data || []);
-  } catch (e) {
-    console.error("Gmail fetch error:", e);
-    setGmailFiles([]);
-  }
-  setGmailLoading(false);
-};
-
+    setGmailLoading(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/mail/files`, { method: "GET" });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(`Failed to load Gmail files: ${res.status} ${text}`);
+      }
+      const files = await res.json();
+      setGmailFiles(Array.isArray(files) ? files : files.data || []);
+    } catch (e) {
+      console.error("Gmail fetch error:", e);
+      setGmailFiles([]);
+    } finally {
+      setGmailLoading(false);
+    }
+  };
 
   const getUrgencyColor = (u: string) =>
     ({
@@ -126,13 +156,7 @@ export default function Dashboard() {
     }[u] || "");
 
   const getDepartmentIcon = (name: string) => {
-    const icons: any = {
-      HR: Users,
-      Finance: DollarSign,
-      Legal: Scale,
-      Admin: Briefcase,
-      Procurement: ShoppingCart,
-    };
+    const icons: any = { HR: Users, Finance: DollarSign, Legal: Scale, Admin: Briefcase, Procurement: ShoppingCart };
     return icons[name] || Briefcase;
   };
 
@@ -144,11 +168,35 @@ export default function Dashboard() {
 
   const recentDocuments = filteredDocuments.slice(0, 8);
 
+  // Show loading while auth is initializing
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="text-xl font-semibold mb-2">Loading...</div>
+          <p className="text-gray-600">Please wait</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render dashboard if no profile
+  if (!profile) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-xl font-semibold mb-2">Redirecting...</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <DashboardLayout>
       <div className="p-8">
         <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
-        <p className="text-gray-600 mb-6">Welcome back, {profile?.full_name}!</p>
+        <p className="text-gray-600 mb-6">Welcome back, {profile.full_name}!</p>
 
         {/* --------------- Recent Documents ---------------- */}
         <div className="bg-white p-6 rounded-xl shadow-sm border mb-8">
@@ -218,12 +266,43 @@ export default function Dashboard() {
             <h2 className="text-xl font-semibold flex items-center gap-2">
               <Mail className="w-5 h-5 text-blue-600" /> Gmail Attachments
             </h2>
-            <button
-              onClick={loadGmailFiles}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg flex items-center gap-2"
-            >
-              <RefreshCw className="w-4 h-4" /> Load Gmail
-            </button>
+
+            <div className="flex gap-2">
+              <button
+                onClick={loadGmailFiles}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg flex items-center gap-2"
+              >
+                <RefreshCw className="w-4 h-4" /> Reload Gmail
+              </button>
+              <button
+                onClick={async () => {
+                  setGmailLoading(true);
+                  try {
+                    const resp = await authFetch(`${API_URL}/api/mail/fetch`, {
+                      method: "POST",
+                      body: JSON.stringify({}), // No userId needed - comes from JWT
+                    });
+                    if (!resp.ok) {
+                      const errorText = await resp.text().catch(() => "");
+                      console.error("Fetch failed:", errorText);
+                      alert(`Failed to fetch emails: ${errorText}`);
+                      return;
+                    }
+                    const result = await resp.json();
+                    console.log("Emails fetched:", result);
+                    await loadGmailFiles();
+                  } catch (e) {
+                    console.error("Trigger fetch error:", e);
+                    alert("Error fetching emails. Check console for details.");
+                  } finally {
+                    setGmailLoading(false);
+                  }
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg flex items-center gap-2"
+              >
+                <Upload className="w-4 h-4" /> Pull Mail
+              </button>
+            </div>
           </div>
 
           {gmailLoading ? (
@@ -235,8 +314,8 @@ export default function Dashboard() {
               {gmailFiles.map((file) => (
                 <div
                   key={file.id}
-                  className="border rounded-lg p-4 w-80 cursor-pointer hover:shadow-lg transition"
                   onClick={() => window.open(file.url, "_blank")}
+                  className="border rounded-lg p-4 w-80 cursor-pointer hover:shadow-lg transition"
                 >
                   <div className="flex justify-between mb-3">
                     <h3 className="font-semibold line-clamp-2">{file.filename}</h3>
@@ -245,9 +324,7 @@ export default function Dashboard() {
                     </span>
                   </div>
 
-                  <p className="text-sm text-gray-600 line-clamp-2 mb-3">
-                    {file.mimeType}
-                  </p>
+                  <p className="text-sm text-gray-600 line-clamp-2 mb-3">{file.mimeType}</p>
 
                   <div className="flex justify-between text-xs text-gray-500">
                     <span className="flex items-center gap-1">
@@ -270,6 +347,7 @@ export default function Dashboard() {
         {/* ---------------- Department Wheel ---------------- */}
         <div className="bg-white p-6 rounded-xl shadow-sm border">
           <h2 className="text-xl font-semibold mb-6">Department-wise Documents</h2>
+
           <div className="flex items-center justify-center mb-8">
             <div className="relative w-full max-w-2xl aspect-square">
               {departments.map((dept, idx) => {
@@ -282,7 +360,9 @@ export default function Dashboard() {
                 return (
                   <button
                     key={dept._id}
-                    onClick={() => setSelectedDepartment(selectedDepartment === dept._id ? null : dept._id)}
+                    onClick={() =>
+                      setSelectedDepartment(selectedDepartment === dept._id ? null : dept._id)
+                    }
                     className="absolute w-28 h-28 rounded-full flex flex-col items-center justify-center text-white hover:scale-110 transition-all"
                     style={{
                       backgroundColor: dept.color,

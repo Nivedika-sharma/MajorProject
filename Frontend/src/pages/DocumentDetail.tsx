@@ -140,33 +140,33 @@ export default function DocumentDetail() {
     setLoading(true);
     try {
       // Document
-      const doc = (await apiFetch(`/documents/${id}`)) as DocumentWithDetails;
+      const doc = (await apiFetch(`/api/documents/${id}`)) as DocumentWithDetails;
       setDocument(doc);
 
       // comments
       const fetchedComments = (await apiFetch(
-        `/comments/${id}`
+        `/api/comments/${id}`
       )) as Comment[];
       setComments(fetchedComments || []);
 
       // notes
-      const fetchedNotes = (await apiFetch(`/notes/${id}`)) as Note[];
+      const fetchedNotes = (await apiFetch(`/api/notes/${id}`)) as Note[];
       setNotes(fetchedNotes || []);
 
       // highlights
       const fetchedHighlights = (await apiFetch(
-        `/highlights/${id}`
+        `/api/highlights/${id}`
       )) as Highlight[];
       setHighlights(fetchedHighlights || []);
 
       // permissions
       const fetchedPerms = (await apiFetch(
-        `/permissions/${id}`
+        `/api/permissions/${id}`
       )) as DocumentPermission[];
       setPermissions(fetchedPerms || []);
 
       // all profiles (for granting permission)
-      const fetchedProfiles = (await apiFetch(`/profiles`)) as Profile[];
+      const fetchedProfiles = (await apiFetch(`/api/profiles`)) as Profile[];
       setAllProfiles(fetchedProfiles || []);
     } catch (err) {
       console.error("Error loading document:", err);

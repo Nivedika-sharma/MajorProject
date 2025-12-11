@@ -1,8 +1,9 @@
 // src/pages/GmailDocument.tsx
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Download, Mail, Clock, FileText } from "lucide-react";
+import { ArrowLeft, Download, Mail, Clock, User, FileText } from "lucide-react";
 import DashboardLayout from "../components/DashboardLayout";
+import DocumentViewer from "../components/DocumentViewer"; // ✅ Import the viewer
 
 interface GmailFile {
   _id: string;
@@ -248,16 +249,12 @@ export default function GmailDocument() {
             </div>
 
             {/* Preview Section */}
-            <div className="bg-white p-6 rounded-xl shadow-sm border">
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-blue-600" />
-                File Preview
-              </h3>
-              <div className="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
-                <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600 mb-2">Preview not available</p>
-                <p className="text-sm text-gray-500">Click download button to view the file</p>
-              </div>
+            <div className="bg-white rounded-xl shadow-sm border" style={{ height: "600px" }}>
+              <DocumentViewer
+                fileId={file._id}
+                fileName={file.filename}
+                isGmailAttachment={true}
+              />
             </div>
           </div>
 

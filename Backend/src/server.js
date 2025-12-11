@@ -88,15 +88,15 @@ app.use('/api/notifications', notificationRoutes);
 // HEALTH CHECK
 // -----------------------------
 app.get('/api/health', (req, res) => res.json({ ok: true }));
-app.get("/api/mail/files", async (req, res) => {
-  try {
-    const gfs = getGFS();
-    const files = await gfs.find().toArray();
-    res.json(files);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// app.get("/api/mail/files", async (req, res) => {
+//   try {
+//     const gfs = getGFS();
+//     const files = await gfs.find().toArray();
+//     res.json(files);
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
 
 
 // -----------------------------

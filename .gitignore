@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+
+# Virtual environment
+venv/
+env/
+ENV/
+.venv/
+
+# IDE / Editor folders
+.vscode/
+.idea/
+*.swp
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# HuggingFace cache
+huggingface/
+hf_cache/
+transformers_cache/
+.cache/
+
+# PyTorch cache
+torch_cache/
+
+# Uploaded files (if any)
+uploads/
+temp/

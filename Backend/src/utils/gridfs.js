@@ -1,35 +1,15 @@
-// src/utils/createfs.js
+// src/utils/gridfs.js
 import mongoose from "mongoose";
 
-let gfs;
-let readyPromise;
+let gfs = null;
 
-/**
- * Initialize GridFSBucket after MongoDB connection
- */
-mongoose.connection.on("connected", () => {
-  gfs = new mongoose.mongo.GridFSBucket(mongoose.connection.db, {
-    bucketName: "mailUploads",
-  });
-  console.log("✅ GridFS initialized");
-});
-
-/**
- * Get GridFSBucket instance
- */
-export const getGFS = async () => {
-  if (gfs) return gfs;
-
-  if (!readyPromise) {
-    readyPromise = new Promise((resolve, reject) => {
-      if (mongoose.connection.readyState === 1 && gfs) {
-        resolve(gfs);
-      } else {
-        mongoose.connection.once("connected", () => resolve(gfs));
-        mongoose.connection.once("error", (err) => reject(err));
-      }
+export const getGFS = () => {
+  if (!mongoose.connection.db) throw new Error("MongoDB not connected");
+  if (!gfs) {
+    gfs = new mongoose.mongo.GridFSBucket(mongoose.connection.db, {
+      bucketName: "mailUploads",
     });
+    console.log("✅ GridFS initialized");
   }
-
-  return readyPromise;
+  return gfs;
 };

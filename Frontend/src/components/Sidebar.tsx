@@ -50,7 +50,7 @@ export default function Sidebar() {
             </div>
             <div>
               <p className="text-lg font-semibold text-gray-900">{profile?.full_name}</p>
-              <p className="text-sm text-gray-500">{profile?.designation || "User"}</p>
+              {/* <p className="text-sm text-gray-500">{profile?.designation || "User"}</p> */}
             </div>
           </div>
         ) : (

@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from "react";
-import { Calendar, FileText, Filter } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Calendar, Filter } from "lucide-react";
 import DashboardLayout from "./DashboardLayout";
 
 const documentData = [

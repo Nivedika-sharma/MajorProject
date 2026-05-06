@@ -56,7 +56,7 @@ FEEDBACK_DATASET_PATH = os.path.join(
 NEGATIVE_FEEDBACK_DATASET_PATH = os.path.join(
     BASE_DIR, "dataset_pipeline", "output", "manual_review_negative_feedback.csv"
 )
-CONFIDENCE_THRESHOLD = 0.60
+CONFIDENCE_THRESHOLD = 0.50
 AUTO_ROUTE_DEPT_THRESHOLD = 0.40
 RELEVANT_DEPT_THRESHOLD = 0.15
 MANUAL_REVIEW_MIN_SCORE = 0.20
@@ -81,6 +81,8 @@ mongo_client: Optional[MongoClient] = None
 mongo_db = None
 doc_bucket: Optional[GridFSBucket] = None
 feedback_lock = threading.Lock()
+feedback_retrain_lock = threading.Lock()
+feedback_retrain_running = False
 feedback_rows: List[Dict[str, str]] = []
 feedback_embeddings: Optional[np.ndarray] = None
 negative_feedback_rows: List[Dict[str, str]] = []
@@ -184,6 +186,22 @@ GENERIC_LABEL_TO_DEPARTMENTS = {
     "email": ["Admin"],
     "form": ["Admin"],
 }
+
+
+def _get_departments_for_label(label: str) -> List[str]:
+    normalized = _normalize_label(label)
+    if not normalized:
+        return []
+    return LABEL_TO_DEPARTMENTS.get(normalized) or GENERIC_LABEL_TO_DEPARTMENTS.get(normalized, [])
+
+
+def _get_allowed_labels_for_department(department: str) -> List[str]:
+    allowed = {_normalize_label(label) for label in ROUTING_RULES.get(department, [])}
+    department_key = _normalize_department_name(department)
+    for label, mapped_departments in GENERIC_LABEL_TO_DEPARTMENTS.items():
+        if department_key in {_normalize_department_name(dep) for dep in mapped_departments}:
+            allowed.add(_normalize_label(label))
+    return sorted(label for label in allowed if label)
 
 DEPARTMENT_KEYWORD_BOOSTS = {
     "Finance": {
@@ -420,6 +438,83 @@ def _append_negative_feedback_sample(text: str, wrong_label: str, source_doc_id:
 
     _load_negative_feedback_memory()
     return True
+
+
+def _retrain_model_from_feedback(min_feedback: int = 50) -> Dict[str, object]:
+    """Retrain the classifier using the base dataset plus manual-review feedback."""
+    global clf
+    _ensure_feedback_csv()
+
+    if not os.path.exists(DATASET_PATH):
+        return {"status": "error", "message": "Base dataset not found", "code": 404}
+    if not os.path.exists(FEEDBACK_DATASET_PATH):
+        return {"status": "error", "message": "Feedback dataset not found", "code": 404}
+
+    base_df = pd.read_csv(DATASET_PATH)
+    fb_df = pd.read_csv(FEEDBACK_DATASET_PATH)
+    if len(fb_df) < max(1, min_feedback):
+        return {
+            "status": "error",
+            "message": "Not enough feedback samples for retraining",
+            "feedback_count": int(len(fb_df)),
+            "required_min_feedback": int(min_feedback),
+            "code": 400,
+        }
+
+    if "text" not in base_df.columns or "label" not in base_df.columns:
+        return {"status": "error", "message": "Base dataset must contain text,label", "code": 400}
+    if "text" not in fb_df.columns or "label" not in fb_df.columns:
+        return {"status": "error", "message": "Feedback dataset must contain text,label", "code": 400}
+
+    train_df = pd.concat(
+        [base_df[["text", "label"]], fb_df[["text", "label"]]],
+        ignore_index=True,
+    )
+    train_df["text"] = train_df["text"].fillna("").astype(str)
+    train_df["label"] = train_df["label"].fillna("").astype(str).map(_normalize_label)
+    train_df = train_df[(train_df["text"].str.len() > 0) & (train_df["label"].str.len() > 0)]
+
+    if train_df.empty:
+        return {"status": "error", "message": "No training rows after cleaning", "code": 400}
+
+    try:
+        from st_classifier import SentenceTransformerClassifier
+
+        new_clf = SentenceTransformerClassifier(model_name=SBERT_MODEL_NAME)
+        new_clf.fit(train_df["text"].tolist(), train_df["label"].tolist())
+        joblib.dump(new_clf, MODEL_PATH)
+        clf = new_clf
+        _load_feedback_memory()
+        return {
+            "status": "ok",
+            "message": "Model retrained with manual-review feedback",
+            "base_rows": int(len(base_df)),
+            "feedback_rows": int(len(fb_df)),
+            "train_rows": int(len(train_df)),
+            "model_path": MODEL_PATH,
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e), "code": 500}
+
+
+def _maybe_schedule_feedback_retrain(min_feedback: int = 50) -> None:
+    global feedback_retrain_running
+    with feedback_retrain_lock:
+        if feedback_retrain_running:
+            return
+        if len(feedback_rows) < min_feedback:
+            return
+        feedback_retrain_running = True
+
+    def _worker():
+        global feedback_retrain_running
+        try:
+            _retrain_model_from_feedback(min_feedback=min_feedback)
+        finally:
+            with feedback_retrain_lock:
+                feedback_retrain_running = False
+
+    threading.Thread(target=_worker, daemon=True).start()
 
 
 def _predict_from_feedback_memory(classification_input: str):
@@ -737,6 +832,37 @@ def predict_document(extracted_text: str, filename: str = "") -> Dict[str, objec
         )
 
     department_scores = _compute_department_scores(label_probs, classification_input)
+
+    if label_confidence >= CONFIDENCE_THRESHOLD:
+        auto_departments = []
+        suggested_departments = _get_departments_for_label(predicted_label)
+        primary_route = suggested_departments[0] if suggested_departments else None
+
+        if not primary_route and department_scores:
+            primary_route = max(department_scores.items(), key=lambda item: item[1])[0]
+
+        if primary_route:
+            auto_departments = [
+                {
+                    "department": primary_route,
+                    "score": float(department_scores.get(primary_route, label_confidence)),
+                }
+            ]
+            return {
+                "label": predicted_label,
+                "label_confidence": float(label_confidence),
+                "label_probabilities": label_probs,
+                "department_scores": department_scores,
+                "primary_route": primary_route,
+                "note": "confidence_auto_routed",
+                "department_predictions": _to_sorted_department_predictions(department_scores)[
+                    :TOP_DEPARTMENT_CANDIDATES
+                ],
+                "relevant_departments": auto_departments,
+                "auto_route_departments": auto_departments,
+                "manual_review_departments": [],
+            }
+
     routing = _resolve_department_routing(department_scores)
 
     return {
@@ -893,10 +1019,23 @@ def route_and_store(
     manual_department_names = [item["department"] for item in manual_departments]
     if not auto_department_names and route_to and route_to != "manual_review":
         auto_department_names = [route_to]
+    label_department_names = LABEL_TO_DEPARTMENTS.get(_normalize_label(predicted_label), [])
     suggested_department = (
         manual_department_names[0]
         if manual_department_names
-        else (auto_department_names[0] if auto_department_names else None)
+        else (
+            auto_department_names[0]
+            if auto_department_names
+            else (
+                label_department_names[0]
+                if label_department_names
+                else (
+                    route_to
+                if route_to and route_to != "manual_review"
+                    else (department_predictions[0]["department"] if department_predictions else None)
+                )
+            )
+        )
     )
 
     _ensure_db()
@@ -957,11 +1096,22 @@ def home():
 
 @app.get("/routing-rules")
 def get_routing_rules():
+    departments: Dict[str, List[str]] = {
+        dept: sorted({_normalize_label(label) for label in labels})
+        for dept, labels in ROUTING_RULES.items()
+    }
+    for label, mapped_departments in GENERIC_LABEL_TO_DEPARTMENTS.items():
+        normalized_label = _normalize_label(label)
+        for department in mapped_departments:
+            departments.setdefault(department, [])
+            if normalized_label not in departments[department]:
+                departments[department].append(normalized_label)
+
+    for dept in departments:
+        departments[dept] = sorted(set(departments[dept]))
+
     return {
-        "departments": {
-            dept: sorted([_normalize_label(label) for label in labels])
-            for dept, labels in ROUTING_RULES.items()
-        }
+        "departments": departments
     }
 
 
@@ -1002,60 +1152,12 @@ def feedback_negative(payload: NegativeFeedbackRequest):
 
 @app.post("/learning/retrain")
 def retrain_from_feedback(payload: RetrainRequest):
-    global clf
-    _ensure_feedback_csv()
-
-    if not os.path.exists(DATASET_PATH):
-        return JSONResponse({"message": "Base dataset not found"}, status_code=404)
-    if not os.path.exists(FEEDBACK_DATASET_PATH):
-        return JSONResponse({"message": "Feedback dataset not found"}, status_code=404)
-
-    base_df = pd.read_csv(DATASET_PATH)
-    fb_df = pd.read_csv(FEEDBACK_DATASET_PATH)
-    if len(fb_df) < max(1, payload.min_feedback):
-        return JSONResponse(
-            {
-                "message": "Not enough feedback samples for retraining",
-                "feedback_count": int(len(fb_df)),
-                "required_min_feedback": int(payload.min_feedback),
-            },
-            status_code=400,
-        )
-
-    if "text" not in base_df.columns or "label" not in base_df.columns:
-        return JSONResponse({"message": "Base dataset must contain text,label"}, status_code=400)
-    if "text" not in fb_df.columns or "label" not in fb_df.columns:
-        return JSONResponse({"message": "Feedback dataset must contain text,label"}, status_code=400)
-
-    train_df = pd.concat(
-        [base_df[["text", "label"]], fb_df[["text", "label"]]],
-        ignore_index=True,
-    )
-    train_df["text"] = train_df["text"].fillna("").astype(str)
-    train_df["label"] = train_df["label"].fillna("").astype(str).map(_normalize_label)
-    train_df = train_df[(train_df["text"].str.len() > 0) & (train_df["label"].str.len() > 0)]
-
-    if train_df.empty:
-        return JSONResponse({"message": "No training rows after cleaning"}, status_code=400)
-
-    try:
-        from st_classifier import SentenceTransformerClassifier
-
-        new_clf = SentenceTransformerClassifier(model_name=SBERT_MODEL_NAME)
-        new_clf.fit(train_df["text"].tolist(), train_df["label"].tolist())
-        joblib.dump(new_clf, MODEL_PATH)
-        clf = new_clf
-        _load_feedback_memory()
-        return {
-            "status": "ok",
-            "message": "Model retrained with manual-review feedback",
-            "base_rows": int(len(base_df)),
-            "feedback_rows": int(len(fb_df)),
-            "train_rows": int(len(train_df)),
-            "model_path": MODEL_PATH,
-        }
-    except Exception as e:
-        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
+    result = _retrain_model_from_feedback(min_feedback=payload.min_feedback)
+    if result.get("status") != "ok":
+        code = int(result.get("code") or 500)
+        payload_result = {k: v for k, v in result.items() if k != "code"}
+        return JSONResponse(payload_result, status_code=code)
+    return result
 
 
 @app.post("/summarize")
@@ -1352,9 +1454,7 @@ def update_document_route(document_id: str, payload: RouteUpdateRequest):
         selected_label = None
         if payload.label is not None and payload.label.strip():
             normalized_label = _normalize_label(payload.label)
-            allowed_labels = {
-                _normalize_label(l) for l in ROUTING_RULES.get(canonical_department, [])
-            }
+            allowed_labels = set(_get_allowed_labels_for_department(canonical_department))
             if normalized_label not in allowed_labels:
                 return JSONResponse(
                     {
@@ -1426,12 +1526,14 @@ def update_document_route(document_id: str, payload: RouteUpdateRequest):
                 or existing.get("filename")
                 or ""
             )
-            _append_feedback_sample(
+            feedback_saved = _append_feedback_sample(
                 text=feedback_text,
                 label=selected_label,
                 department=canonical_department,
                 source_doc_id=str(oid),
             )
+            if feedback_saved:
+                _maybe_schedule_feedback_retrain()
         return {
             "id": str(updated["_id"]),
             "filename": updated.get("filename"),

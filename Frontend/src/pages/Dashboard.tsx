@@ -111,6 +111,8 @@ interface IngestResponse {
   };
 }
 
+type RoutingRules = Record<string, string[]>;
+
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 const API_URL = `${BASE_URL}`.replace(/\/$/, "");
 const AI_BASE_URL = "http://127.0.0.1:8000";
@@ -142,6 +144,7 @@ export async function authFetch(url: string, options: RequestInit = {}) {
 export default function Dashboard() {
   const [documents, setDocuments] = useState<DocumentWithDetails[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [routingRules, setRoutingRules] = useState<RoutingRules>({});
   const [selectedDepartment] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -158,6 +161,7 @@ export default function Dashboard() {
 
   const [gmailFiles, setGmailFiles] = useState<GmailFile[]>([]);
   const [gmailLoading, setGmailLoading] = useState(false);
+  const routingRulesRef = useRef<RoutingRules>({});
 
   const { profile, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -208,20 +212,29 @@ export default function Dashboard() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [docsRes, deptRes] = await Promise.all([
+      const [docsRes, deptRes, rulesRes] = await Promise.all([
         authFetch(`${API_URL}/api/documents`),
         authFetch(`${API_URL}/api/departments`),
+        fetch(`${AI_BASE_URL}/routing-rules`),
       ]);
 
       const docsJson = await docsRes.json();
       const deptsJson = await deptRes.json();
+      const rulesJson = rulesRes.ok ? await rulesRes.json().catch(() => null) : null;
+      const fetchedRules =
+        rulesJson?.departments && typeof rulesJson.departments === "object"
+          ? (rulesJson.departments as RoutingRules)
+          : {};
 
       setDocuments(Array.isArray(docsJson) ? docsJson : docsJson.data || []);
       setDepartments(Array.isArray(deptsJson) ? deptsJson : deptsJson.data || []);
+      routingRulesRef.current = fetchedRules;
+      setRoutingRules(fetchedRules);
     } catch (error) {
       console.error("Dashboard load error:", error);
       setDocuments([]);
       setDepartments([]);
+      setRoutingRules({});
     }
     setLoading(false);
   };
@@ -361,18 +374,20 @@ export default function Dashboard() {
     return routedName === "manual_review";
   };
 
-  const getSuggestedDepartmentFromLabel = (label?: string): string | null => {
-    const key = (label || "").trim().toLowerCase();
-    const suggestionMap: Record<string, string> = {
-      invoice: "Finance",
-      contract: "Legal",
-      resume: "HR",
-      report: "Operations",
-      purchase_order: "Procurement",
-      quotation: "Procurement",
-      rfq: "Procurement",
-    };
-    return suggestionMap[key] || null;
+  const getSuggestedDepartmentFromLabel = (
+    label?: string,
+    sourceRules: RoutingRules = routingRulesRef.current
+  ): string | null => {
+    const normalized = (label || "").trim().toLowerCase().replace(/\s+/g, "_");
+    if (!normalized) return null;
+
+    for (const [department, labels] of Object.entries(sourceRules)) {
+      if (labels.some((item) => (item || "").trim().toLowerCase().replace(/\s+/g, "_") === normalized)) {
+        return department;
+      }
+    }
+
+    return null;
   };
 
   const getDepartmentIdByName = (

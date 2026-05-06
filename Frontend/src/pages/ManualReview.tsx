@@ -113,6 +113,22 @@ export default function ManualReview() {
   const toDepartmentSlug = (departmentName: string) =>
     departmentName.trim().toLowerCase().replace(/\s+/g, "-");
 
+  const getSuggestedDepartmentFromLabel = (
+    label?: string | null,
+    sourceRules: Record<string, string[]> = labelsByDepartment
+  ): string | null => {
+    const key = normalizeLabel(label);
+    if (!key) return null;
+
+    for (const [department, labels] of Object.entries(sourceRules)) {
+      if (labels.some((labelName) => normalizeLabel(labelName) === key)) {
+        return department;
+      }
+    }
+
+    return null;
+  };
+
   const getDeptByName = (name?: string | null, sourceDepartments: Department[] = departments) => {
     const wanted = normalizeName(name || "");
     if (!wanted) return undefined;
@@ -151,7 +167,15 @@ export default function ManualReview() {
     };
 
     departments.forEach((d) => pushUnique(d.name));
-    manualReviewDocs.forEach((doc) => pushUnique(doc.metadata?.manual_review?.suggested_department || ""));
+    manualReviewDocs.forEach((doc) => {
+      pushUnique(doc.metadata?.manual_review?.suggested_department || "");
+      pushUnique(
+        getSuggestedDepartmentFromLabel(
+          doc.metadata?.manual_review?.predicted_label,
+          labelsByDepartment
+        ) || ""
+      );
+    });
     FALLBACK_DEPARTMENT_NAMES.forEach((name) => pushUnique(name));
 
     return allNames.sort((a, b) => a.localeCompare(b));
@@ -187,7 +211,13 @@ export default function ManualReview() {
         const defaults: Record<string, string> = {};
         const defaultLabels: Record<string, string> = {};
         docs.forEach((doc) => {
-          const suggested = doc.metadata?.manual_review?.suggested_department || "";
+          const suggested =
+            doc.metadata?.manual_review?.suggested_department ||
+            getSuggestedDepartmentFromLabel(
+              doc.metadata?.manual_review?.predicted_label,
+              fetchedDepartments as Record<string, string[]>
+            ) ||
+            "";
           const currentDeptId = typeof doc.department_id === "string" ? doc.department_id : doc.department_id?._id || "";
           const currentDeptName =
             typeof doc.department_id === "object" ? doc.department_id?.name || "" : depts.find((d) => d._id === currentDeptId)?.name || "";
@@ -439,7 +469,10 @@ export default function ManualReview() {
           <div className="space-y-4">
             {manualReviewDocs.map((doc) => {
               const review = doc.metadata?.manual_review;
-              const suggested = review?.suggested_department || "No suggestion";
+              const suggested =
+                review?.suggested_department ||
+                getSuggestedDepartmentFromLabel(review?.predicted_label) ||
+                "No suggestion";
               const confidence = typeof review?.confidence === "number" ? `${(review.confidence * 100).toFixed(1)}%` : "N/A";
               const previouslyRoutedDepartments = Array.from(
                 new Set(
@@ -530,7 +563,7 @@ export default function ManualReview() {
                         {departmentOptions.map((name) => (
                           <option key={name} value={name}>
                             {name}
-                            {normalizeName(review?.suggested_department) === normalizeName(name) ? " (Recommended)" : ""}
+                            {normalizeName(suggested) === normalizeName(name) ? " (Recommended)" : ""}
                           </option>
                         ))}
                       </select>

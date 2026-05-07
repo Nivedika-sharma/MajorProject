@@ -212,15 +212,22 @@ export default function Dashboard() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [docsRes, deptRes, rulesRes] = await Promise.all([
+      const [docsRes, deptRes] = await Promise.all([
         authFetch(`${API_URL}/api/documents`),
         authFetch(`${API_URL}/api/departments`),
-        fetch(`${AI_BASE_URL}/routing-rules`),
       ]);
 
       const docsJson = await docsRes.json();
       const deptsJson = await deptRes.json();
-      const rulesJson = rulesRes.ok ? await rulesRes.json().catch(() => null) : null;
+
+      let rulesJson = null;
+      try {
+        const rulesRes = await fetch(`${AI_BASE_URL}/routing-rules`);
+        rulesJson = rulesRes.ok ? await rulesRes.json().catch(() => null) : null;
+      } catch (rulesError) {
+        console.warn("Routing rules unavailable:", rulesError);
+      }
+
       const fetchedRules =
         rulesJson?.departments && typeof rulesJson.departments === "object"
           ? (rulesJson.departments as RoutingRules)
